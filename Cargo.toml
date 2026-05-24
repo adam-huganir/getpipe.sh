@@ -3,7 +3,7 @@ members = [".", "xtask"]
 resolver = "2"
 
 [package]
-name = "termlib-server"
+name = "getpipe"
 version = "0.5.0"
 edition = "2024"
 

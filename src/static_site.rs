@@ -8,7 +8,7 @@ const STATIC_FILES: [(&str, &str); 2] = [
 ];
 
 const HEAD: &str = concat!(
-  "<head><title>termlibs</title><style>",
+  "<head><title>getpipe.sh</title><style>",
   include_str!("../static/style.css"),
   "</style></head><body>"
 );

@@ -43,8 +43,8 @@ use std::time::Instant;
 const LOG_REQUESTS_SKIP_PATHS: [&str; 1] = ["/favicon.ico"];
 const LATEST_API_PREFIX: &str = "/v1";
 const FAVICON: &[u8] = include_bytes!("../favicon.ico");
-static TERMLIBS_ROOT: LazyLock<PathBuf> =
-  LazyLock::new(|| PathBuf::from(env::var("TERMLIBS_ROOT").unwrap_or("../".into())));
+static GETPIPE_ROOT: LazyLock<PathBuf> =
+  LazyLock::new(|| PathBuf::from(env::var("GETPIPE_ROOT").unwrap_or("../".into())));
 
 fn setup_logger(log_level: &str) -> Result<(), fern::InitError> {
   let log_level = log_level.to_uppercase();
@@ -153,7 +153,7 @@ fn accepts_html(headers: &HeaderMap) -> bool {
 
 async fn root_handler() -> Result<Html<String>, AppError> {
   info!("{:?}", "root");
-  info!("{:?}", TERMLIBS_ROOT);
+  info!("{:?}", GETPIPE_ROOT);
   let html = static_site::load_static("index.html")
     .ok_or_else(|| AppError::InvalidInput("index.html not found".to_string()))?;
   Ok(Html(html))
@@ -196,18 +196,18 @@ async fn log_requests_middleware(request: Request, next: Next) -> impl IntoRespo
 #[derive(OpenApi)]
 #[openapi(
   info(
-    title = "Termlibs API",
+    title = "getpipe.sh API",
     version = "0.5.0",
-    description = "Terminal library installer API - Generate install scripts for popular CLI tools",
+    description = "getpipe.sh - Generate install scripts for popular CLI tools",
     contact(
-      name = "Termlibs",
+      name = "getpipe.sh",
       email = "adam@huganir.com",
-      url = "https://github.com/termlibs"
+      url = "https://github.com/adam-huganir/getpipe.sh"
     )
   ),
   servers(
     (url = "http://localhost:8000/v1", description = "Local server"),
-    (url = "https://termlibs.dev/v1", description = "Production server")
+    (url = "https://getpipe.sh/v1", description = "Production server")
   ),
   paths(
     install_handler,
@@ -309,7 +309,7 @@ async fn main() -> anyhow::Result<()> {
     },
     Some(Commands::Completions(args)) => {
       let mut command = cli::build_command();
-      generate(args.shell, &mut command, "termlibs", &mut io::stdout());
+      generate(args.shell, &mut command, "getpipe", &mut io::stdout());
       Ok(())
     }
     Some(Commands::Serve(args)) => run_server(Some(&args)).await,
@@ -319,7 +319,7 @@ async fn main() -> anyhow::Result<()> {
 
 fn build_cors_layer() -> anyhow::Result<CorsLayer> {
   let raw_origins = env::var("CORS_ALLOWED_ORIGINS")
-    .unwrap_or_else(|_| "http://localhost:8000,https://termlibs.dev".to_string());
+    .unwrap_or_else(|_| "http://localhost:8000,https://getpipe.sh".to_string());
   let origins: Vec<HeaderValue> = raw_origins
     .split(',')
     .map(str::trim)

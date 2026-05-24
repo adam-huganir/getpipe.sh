@@ -2,7 +2,7 @@
   "variable": {
     "CONTEXT": { "default": "." },
     "DOCKERFILE": { "default": "Dockerfile" },
-    "IMAGE": { "default": "gcr.io/termlibs/images/server" },
+    "IMAGE": { "default": "us-east1-docker.pkg.dev/getpipe-sh/images/server" },
     "TAG": { "default": "dev" },
     "PLATFORMS": { "type": "list(string)", "default": ["linux/amd64"] }
   },
@@ -12,9 +12,9 @@
       "dockerfile": "${DOCKERFILE}",
       "platforms": "${PLATFORMS}",
       "labels": {
-        "org.opencontainers.image.title": "Termlibs Server",
-        "org.opencontainers.image.description": "Termlibs install service",
-        "org.opencontainers.image.source": "https://github.com/termlibs/server",
+        "org.opencontainers.image.title": "Getpipe.sh Server",
+        "org.opencontainers.image.description": "Getpipe.sh Server",
+        "org.opencontainers.image.source": "https://github.com/adam-huganir/getpipe.sh",
         "org.opencontainers.image.version": "0.5.0"
       }
     },

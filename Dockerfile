@@ -14,6 +14,6 @@ RUN printf "user:x:1000:1000::/nonexistent:/sbin/nologin\n" > /tmp/passwd \
 FROM scratch AS runtime
 
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /app/target/x86_64-unknown-linux-musl/release/termlib-server /termlib-server
+COPY --from=build /app/target/x86_64-unknown-linux-musl/release/getpipe /getpipe
 
-ENTRYPOINT ["/termlib-server"]
+ENTRYPOINT ["/getpipe"]

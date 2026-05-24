@@ -18,7 +18,7 @@ jobs:
         run: echo "SHORTREF=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       - uses: google-github-actions/auth@v2
         with:
-          project_id: termlibs
+          project_id: getpipe.sh
           credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
           export_environment_variables: true
       - run: gcloud auth configure-docker gcr.io
@@ -29,9 +29,9 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: gcr.io/termlibs/images/server:${{steps.tag.outputs.SHORTREF}}
+          tags: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}
       - id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: server
-          image: gcr.io/termlibs/images/server:${{steps.tag.outputs.SHORTREF}}
+          image: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}

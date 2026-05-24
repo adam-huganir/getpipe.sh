@@ -1204,6 +1204,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "getpipe"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum-test",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "comrak",
+ "crossterm",
+ "fern",
+ "flate2",
+ "log",
+ "mime",
+ "moka",
+ "octocrab",
+ "paste",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "shell-quote",
+ "tar",
+ "tera",
+ "tokio",
+ "tower-http",
+ "url",
+ "utoipa",
+ "utoipa-swagger-ui",
+ "zip 8.3.0",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3273,40 +3307,6 @@ dependencies = [
  "serde_json",
  "slug",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "termlib-server"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "axum",
- "axum-test",
- "chrono",
- "clap",
- "clap_complete",
- "comrak",
- "crossterm",
- "fern",
- "flate2",
- "log",
- "mime",
- "moka",
- "octocrab",
- "paste",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "shell-quote",
- "tar",
- "tera",
- "tokio",
- "tower-http",
- "url",
- "utoipa",
- "utoipa-swagger-ui",
- "zip 8.3.0",
 ]
 
 [[package]]
