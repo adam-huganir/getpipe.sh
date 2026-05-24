@@ -1,0 +1,40 @@
+{
+  "variable": {
+    "CONTEXT": { "default": "." },
+    "DOCKERFILE": { "default": "Dockerfile" },
+    "IMAGE": { "default": "gcr.io/termlibs/images/server" },
+    "TAG": { "default": "dev" },
+    "PLATFORMS": { "type": "list(string)", "default": ["linux/amd64"] }
+  },
+  "target": {
+    "server-base": {
+      "context": "${CONTEXT}",
+      "dockerfile": "${DOCKERFILE}",
+      "platforms": "${PLATFORMS}",
+      "labels": {
+        "org.opencontainers.image.title": "Termlibs Server",
+        "org.opencontainers.image.description": "Termlibs install service",
+        "org.opencontainers.image.source": "https://github.com/termlibs/server",
+        "org.opencontainers.image.version": "0.5.0"
+      }
+    },
+    "server": {
+      "inherits": ["server-base"],
+      "tags": ["${IMAGE}:${TAG}"]
+    },
+    "server-local": {
+      "inherits": ["server-base"],
+      "tags": ["${IMAGE}:local"],
+      "load": true
+    },
+    "server-push": {
+      "inherits": ["server"],
+      "push": true
+    }
+  },
+  "group": {
+    "default": { "targets": ["server"] },
+    "local": { "targets": ["server-local"] },
+    "release": { "targets": ["server-push"] }
+  }
+}
