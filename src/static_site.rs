@@ -1,4 +1,4 @@
-use comrak::{markdown_to_html, Options};
+use comrak::{Options, markdown_to_html};
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 

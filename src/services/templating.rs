@@ -1,9 +1,9 @@
-use log::warn;
 use crate::domain::platform::TargetOs;
 use crate::error::AppError;
 use crate::http::query::InstallQueryOptions;
 use crate::supported_apps::DownloadInfo;
 use crate::templates::TEMPLATES;
+use log::warn;
 use serde_json::Value;
 use tera::Context;
 
@@ -22,7 +22,8 @@ pub(crate) fn render_install_script(
     TargetOs::Linux => (TEMPLATES.render("install.sh", &tera_context)?, "sh"),
     _ => {
       warn!("Unsupported OS: {}, defaulting to Linux", os);
-      (TEMPLATES.render("install.sh", &tera_context)?, "sh") },
+      (TEMPLATES.render("install.sh", &tera_context)?, "sh")
+    }
   };
 
   Ok(rendered)

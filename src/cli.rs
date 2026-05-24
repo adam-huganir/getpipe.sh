@@ -9,7 +9,7 @@ use crate::services::installer;
 use crate::supported_apps::{self, Repo, SupportedApp};
 use crossterm::{
   execute,
-  style::{style, Color, Print, Stylize},
+  style::{Color, Print, Stylize, style},
 };
 use flate2::read::GzDecoder;
 use mime::Mime;
@@ -262,7 +262,7 @@ impl NativeInstallPlan {
       _ => {
         return Err(AppError::InvalidInput(
           "Expected <app> or <owner> <repo> for install target".to_string(),
-        ))
+        ));
       }
     };
 

@@ -1,14 +1,14 @@
 use anyhow::Context;
 use axum::{
+  Router,
   extract::{Path, Query, Request},
   http::{
-    header::{ACCEPT, CONTENT_TYPE},
     HeaderMap, HeaderValue, Method, StatusCode, Uri,
+    header::{ACCEPT, CONTENT_TYPE},
   },
   middleware::{self, Next},
   response::{Html, IntoResponse, Redirect},
   routing::get,
-  Router,
 };
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;

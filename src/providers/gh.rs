@@ -291,7 +291,9 @@ mod tests {
       assert!(
         !links.is_empty(),
         "known app '{}' should have at least one matching asset in latest release for deployment {}",
-        repo.get_github_repo().unwrap_or_else(|_| "<unknown>".to_string()),
+        repo
+          .get_github_repo()
+          .unwrap_or_else(|_| "<unknown>".to_string()),
         deployment
       );
     }

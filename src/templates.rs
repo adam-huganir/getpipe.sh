@@ -1,5 +1,5 @@
 use log::info;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use shell_quote::{Bash, Quote};
 use std::collections::HashMap;
 use std::sync::LazyLock;
