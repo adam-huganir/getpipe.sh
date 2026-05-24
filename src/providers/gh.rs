@@ -214,6 +214,7 @@ mod tests {
 
   #[tokio::test]
   #[ignore = "flaky: makes live GitHub API calls that hit rate limits"]
+  #[allow(clippy::await_holding_lock)]
   async fn sanity_known_github_apps_latest_release_lookup() {
     let _guard = lock_api_sanity_tests();
     for (repo, deployment) in [
@@ -297,6 +298,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[allow(clippy::await_holding_lock)]
   async fn sanity_jq_release_tag_structure() -> Result<(), AppError> {
     let _guard = lock_api_sanity_tests();
     let octocrab = OctocrabBuilder::default().build().map_err(AppError::from)?;
@@ -340,6 +342,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[allow(clippy::await_holding_lock)]
   async fn sanity_terraform_url_exists() {
     let _guard = lock_api_sanity_tests();
     let client = Client::new();
