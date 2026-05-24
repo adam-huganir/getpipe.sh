@@ -9,7 +9,7 @@ use crate::services::installer;
 use crate::supported_apps::{self, Repo, SupportedApp};
 use crossterm::{
   execute,
-  style::{style, Color, Print, Stylize},
+  style::{Color, Print, Stylize, style},
 };
 use flate2::read::GzDecoder;
 use mime::Mime;
@@ -23,8 +23,8 @@ use tar::Archive;
 use zip::ZipArchive;
 
 #[derive(Parser)]
-#[command(name = "termlibs")]
-#[command(about = "Termlibs server and install script CLI")]
+#[command(name = "getpipe")]
+#[command(about = "getpipe.sh server and install script CLI")]
 #[command(version)]
 pub(crate) struct Cli {
   #[command(subcommand)]
@@ -189,7 +189,7 @@ impl InstallArgs {
 
     // TODO: implement download and install pipeline using `links[selection]` into `tempdir`.
     Err(AppError::InvalidInput(format!(
-      "Native install not yet implemented after selection {:?} in {} (dest: {:?}, name: {:?}, archive_entry: {:?}). Use `termlibs script install ...` for scripts.",
+      "Native install not yet implemented after selection {:?} in {} (dest: {:?}, name: {:?}, archive_entry: {:?}). Use `getpipe script install ...` for scripts.",
       selected_link.name,
       tempdir.display(),
       chosen_path,
@@ -213,21 +213,21 @@ enum InstallTarget {
 
 impl NativeInstallPlan {
   fn from_args(args: &InstallArgs) -> Result<Self, AppError> {
-    let env_os = env::var("TERMLIBS_OS")
+    let env_os = env::var("GETPIPE_OS")
       .ok()
       .map(|v| TargetOs::from(v.as_str()));
-    let env_arch = env::var("TERMLIBS_ARCH")
+    let env_arch = env::var("GETPIPE_ARCH")
       .ok()
       .map(|v| TargetArch::from(v.as_str()));
-    let env_version = env::var("TERMLIBS_VERSION").ok();
-    let env_prefix = env::var("TERMLIBS_PREFIX").ok();
-    let env_method = env::var("TERMLIBS_METHOD")
+    let env_version = env::var("GETPIPE_VERSION").ok();
+    let env_prefix = env::var("GETPIPE_PREFIX").ok();
+    let env_method = env::var("GETPIPE_METHOD")
       .ok()
       .map(|v| InstallMethod::from(v.as_str()));
-    let env_download_only = env::var("TERMLIBS_DOWNLOAD_ONLY").ok().map(is_truthy);
-    let env_force = env::var("TERMLIBS_FORCE").ok().map(is_truthy);
-    let env_quiet = env::var("TERMLIBS_QUIET").ok().map(is_truthy);
-    let env_log_level = env::var("TERMLIBS_LOG_LEVEL").ok();
+    let env_download_only = env::var("GETPIPE_DOWNLOAD_ONLY").ok().map(is_truthy);
+    let env_force = env::var("GETPIPE_FORCE").ok().map(is_truthy);
+    let env_quiet = env::var("GETPIPE_QUIET").ok().map(is_truthy);
+    let env_log_level = env::var("GETPIPE_LOG_LEVEL").ok();
 
     let os = args
       .os
@@ -262,7 +262,7 @@ impl NativeInstallPlan {
       _ => {
         return Err(AppError::InvalidInput(
           "Expected <app> or <owner> <repo> for install target".to_string(),
-        ))
+        ));
       }
     };
 
@@ -326,7 +326,7 @@ fn create_tempdir() -> Result<PathBuf, AppError> {
     .duration_since(UNIX_EPOCH)
     .map(|d| d.as_millis())
     .unwrap_or(0);
-  path.push(format!("termlibs-{}-{}", std::process::id(), millis));
+  path.push(format!("getpipe-{}-{}", std::process::id(), millis));
   fs::create_dir_all(&path).map_err(|err| {
     AppError::InvalidInput(format!(
       "failed to create temp dir {}: {}",

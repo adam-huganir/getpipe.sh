@@ -1,6 +1,6 @@
 # xtask
 
-This directory contains development tasks for the termlib-server project using the [xtask pattern](https://github.com/matklad/cargo-xtask).
+This directory contains development tasks for the getpipe.sh project using the [xtask pattern](https://github.com/matklad/cargo-xtask).
 
 ## Usage
 

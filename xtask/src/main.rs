@@ -4,7 +4,7 @@ use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "xtask")]
-#[command(about = "Development tasks for termlib-server")]
+#[command(about = "Development tasks for getpipe.sh")]
 struct Cli {
   #[command(subcommand)]
   command: Commands,
