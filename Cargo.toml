@@ -29,7 +29,7 @@ serde_yaml = "0.9"
 shell-quote = { version = "0.7.2", default-features = false, features = ["bash", "sh"] }
 tar = "0.4"
 tera = { version = "1.20.0", default-features = false, features = ["builtins"] }
-tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros", "io-std"] }
+tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros", "io-std", "signal"] }
 tower-http = { version = "0.6.8", features = ["cors"] }
 url = "2.5.2"
 utoipa = "5.4.0"

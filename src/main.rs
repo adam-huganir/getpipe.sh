@@ -267,9 +267,35 @@ async fn run_server(serve_args: Option<&cli::ServeArgs>) -> anyhow::Result<()> {
     .context("failed to bind TCP listener")?;
 
   axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .context("axum server exited with error")?;
   Ok(())
+}
+
+async fn shutdown_signal() {
+  let ctrl_c = async {
+    tokio::signal::ctrl_c()
+      .await
+      .expect("failed to install Ctrl+C handler");
+  };
+
+  #[cfg(unix)]
+  let terminate = async {
+    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+      .expect("failed to install SIGTERM handler")
+      .recv()
+      .await;
+  };
+
+  #[cfg(not(unix))]
+  let terminate = std::future::pending::<()>();
+
+  tokio::select! {
+    _ = ctrl_c => {},
+    _ = terminate => {},
+  }
+  info!("shutdown signal received, draining in-flight requests");
 }
 
 #[tokio::main]
@@ -347,8 +373,7 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
   let mut app = Router::new()
     .route("/", get(root_handler))
     .route("/install", get(install_latest_redirect))
-    .route("/install/{app}", get(install_latest_redirect))
-    .route("/install/{user}/{repo}", get(install_latest_redirect))
+    .route("/install/{*rest}", get(install_latest_redirect))
     .route("/favicon.ico", get(favicon))
     .nest("/v1", v1_router)
     .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
@@ -357,6 +382,7 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
 
   if log_requests_enabled {
     debug!("request logging middleware enabled");
+    // Added last so it wraps outermost (executes first), giving accurate end-to-end timing.
     app = app.layer(middleware::from_fn(log_requests_middleware));
   }
 
