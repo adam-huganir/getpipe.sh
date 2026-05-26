@@ -22,8 +22,22 @@ pub(crate) struct ScriptResponse {
   body_size: usize,
 }
 
+fn sanitize_filename(name: &str) -> String {
+  name
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect()
+}
+
 impl ScriptResponse {
   pub(crate) fn new(filename: String, body: String, inline: bool, html: bool) -> ScriptResponse {
+    let filename = sanitize_filename(&filename);
     let body_size = body.len();
     let shell_name = match filename.split('.').next_back().unwrap() {
       "sh" => "sh",

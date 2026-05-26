@@ -1,7 +1,7 @@
 use anyhow::Context;
 use axum::{
   Router,
-  extract::{Path, Query, Request},
+  extract::{DefaultBodyLimit, Path, Query, Request},
   http::{
     HeaderMap, HeaderValue, Method, StatusCode, Uri,
     header::{ACCEPT, CONTENT_TYPE},
@@ -344,8 +344,10 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn build_cors_layer() -> anyhow::Result<CorsLayer> {
-  let raw_origins = env::var("CORS_ALLOWED_ORIGINS")
-    .unwrap_or_else(|_| "http://localhost:8000,https://getpipe.sh".to_string());
+  let raw_origins = env::var("CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
+    warn!("CORS_ALLOWED_ORIGINS not set; defaulting to https://getpipe.sh only");
+    "https://getpipe.sh".to_string()
+  });
   let origins: Vec<HeaderValue> = raw_origins
     .split(',')
     .map(str::trim)
@@ -378,7 +380,8 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
     .nest("/v1", v1_router)
     .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
     .fallback(not_found_handler)
-    .layer(cors);
+    .layer(cors)
+    .layer(DefaultBodyLimit::max(16 * 1024));
 
   if log_requests_enabled {
     debug!("request logging middleware enabled");
