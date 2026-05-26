@@ -255,6 +255,48 @@ mod tests {
           filetype: Filetype::Archive(ArchiveType::TarGz),
         },
       ),
+      // aarch64 (Red Hat etc. naming) must map to the same variant as arm64 (Apple naming)
+      Itc::new(
+        "tool_linux_aarch64.tar.gz",
+        Target {
+          deployment: TargetDeployment {
+            os: TargetOs::Linux,
+            arch: TargetArch::Arm64,
+          },
+          filetype: Filetype::Archive(ArchiveType::TarGz),
+        },
+      ),
+      Itc::new(
+        "tool_linux_aarch64",
+        Target {
+          deployment: TargetDeployment {
+            os: TargetOs::Linux,
+            arch: TargetArch::Arm64,
+          },
+          filetype: Filetype::Binary,
+        },
+      ),
+      // uppercase asset names must be recognized (e.g. some Go projects use AMD64)
+      Itc::new(
+        "tool_Linux_AMD64.tar.gz",
+        Target {
+          deployment: TargetDeployment {
+            os: TargetOs::Linux,
+            arch: TargetArch::Amd64,
+          },
+          filetype: Filetype::Archive(ArchiveType::TarGz),
+        },
+      ),
+      Itc::new(
+        "tool_Linux_ARM64",
+        Target {
+          deployment: TargetDeployment {
+            os: TargetOs::Linux,
+            arch: TargetArch::Arm64,
+          },
+          filetype: Filetype::Binary,
+        },
+      ),
     ];
 
     for case in cases {

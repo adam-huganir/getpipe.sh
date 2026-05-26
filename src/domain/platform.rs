@@ -105,8 +105,8 @@ impl Display for TargetOs {
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 pub(crate) enum TargetArch {
   Amd64,
+  /// Covers both `arm64` (Apple/Linux naming) and `aarch64` (Red Had/Fedora/Others).
   Arm64,
-  Aarch64,
   PPCLe,
   PPC,
   Arm32,
@@ -133,7 +133,6 @@ impl Display for TargetArch {
     match self {
       TargetArch::Amd64 => write!(f, "amd64"),
       TargetArch::Arm64 => write!(f, "arm64"),
-      TargetArch::Aarch64 => write!(f, "aarch64"),
       TargetArch::PPC => write!(f, "ppc64"),
       TargetArch::PPCLe => write!(f, "ppc64le"),
       TargetArch::Arm32 => write!(f, "arm"),
@@ -150,11 +149,11 @@ impl Display for TargetArch {
 
 impl TargetArch {
   pub(crate) fn identify(input: &str) -> TargetArch {
+    let input = input.to_lowercase();
     let amd = ["amd64", "x64", "x86_64"];
     let x86 = ["x86", "i386", "i686", "x86_32", "386", "686", "ia32"];
-    let arm = ["arm64"];
+    let arm64 = ["arm64", "aarch64"];
     let arm32 = ["arm"];
-    let aarch = ["aarch64"];
     let ppcle = ["ppc64le", "ppc64el", "ppcle"];
     let ppc = ["ppc", "ppc64", "powerpc"];
     let mips64le = ["mips64le"];
@@ -166,11 +165,8 @@ impl TargetArch {
     if amd.iter().any(|x| input.contains(x)) {
       return TargetArch::Amd64;
     }
-    if arm.iter().any(|x| input.contains(x)) {
+    if arm64.iter().any(|x| input.contains(x)) {
       return TargetArch::Arm64;
-    }
-    if aarch.iter().any(|x| input.contains(x)) {
-      return TargetArch::Aarch64;
     }
     if ppcle.iter().any(|x| input.contains(x)) {
       return TargetArch::PPCLe;
