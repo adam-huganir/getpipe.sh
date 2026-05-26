@@ -6,13 +6,12 @@
 # 01) Runtime Setup
 #------------------------------------------------------------------------------
 set -euo pipefail
+_E_GENERIC_ERROR=1
 {% if (assets | length  > 0) %}
 RUN_DIRECTORY="$PWD"
 _QUIET={{ quiet | escape_shell }}
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
-
-_E_GENERIC_ERROR=1
 
 #------------------------------------------------------------------------------
 # 02) Temporary Workspace and Exit Cleanup
@@ -25,31 +24,17 @@ trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \
 # 03) Interactive Choice Prompt
 #------------------------------------------------------------------------------
 _ask_choices() {
-  local choice choices opt add_none add_quit idx
-  opt="$(getopt -o "" --long "none,quit" -n "${FUNCNAME[0]}" -- "$@")"
-  if [ "$?" -ne 0 ]; then
-    printf "invalid options\n" >&2
-    exit 1
-  fi
-  eval set -- "$opt"
+  local OPTIND opt add_none add_quit idx choices choice
   add_none=false
   add_quit=false
-  while true; do
-    case "$1" in
-      --quit)
-        add_quit=true
-        shift
-        ;;
-      --none)
-        add_none=true
-        shift
-        ;;
-      --)
-        shift
-        break
-        ;;
+  while getopts "nq" opt; do
+    case "$opt" in
+      n) add_none=true ;;
+      q) add_quit=true ;;
+      *) printf "invalid option\n" >&2; exit 1 ;;
     esac
   done
+  shift $((OPTIND - 1))
   choices=("$@")
   {% raw %}
   if [ "${#choices[@]}" -eq 0 ]; then
@@ -115,7 +100,7 @@ _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ "
 # 06) Asset Selection
 #------------------------------------------------------------------------------
 printf "Please select one of the following:\n"
-choice="$(_ask_choices --quit "${_printables[@]}")"
+choice="$(_ask_choices -q "${_printables[@]}")"
 
 #------------------------------------------------------------------------------
 # 07) Selection Validation
@@ -185,7 +170,7 @@ case "$_type" in
       printf "no executable files found in archive\n" >&2
       exit 100
     else
-      choices="$(_ask_choices --quit "${executable_files[@]}")"
+      choices="$(_ask_choices -q "${executable_files[@]}")"
     fi
     for choice in $choices; do
       case "$choice" in
