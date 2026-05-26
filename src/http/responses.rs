@@ -90,7 +90,12 @@ impl IntoResponse for ScriptResponse {
         format!("inline; filename=\"{}\"", self.filename),
       )
       .body(body.into())
-      .unwrap()
+      .unwrap_or_else(|_| {
+        Response::builder()
+          .status(StatusCode::INTERNAL_SERVER_ERROR)
+          .body("failed to build response".into())
+          .expect("fallback response is always valid")
+      })
   }
 }
 

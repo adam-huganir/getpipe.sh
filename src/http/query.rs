@@ -87,7 +87,7 @@ fn default_quiet() -> bool {
 }
 
 fn default_log_level() -> String {
-  "DEBUG".to_string()
+  "INFO".to_string()
 }
 
 fn default_inline() -> bool {
