@@ -84,9 +84,11 @@ fn build() -> Result<()> {
 
 fn dev() -> Result<()> {
   println!("🚀 Starting development server...");
-  std::env::set_var("LOG_LEVEL", "debug");
-  std::env::set_var("LOG_REQUESTS", "true");
-  run_command("cargo", &["run"])?;
+  run_command_with_env(
+    "cargo",
+    &["run"],
+    &[("LOG_LEVEL", "debug"), ("LOG_REQUESTS", "true")],
+  )?;
   Ok(())
 }
 
@@ -117,7 +119,16 @@ fn ci() -> Result<()> {
 }
 
 fn run_command(cmd: &str, args: &[&str]) -> Result<()> {
-  let status = Command::new(cmd).args(args).status()?;
+  run_command_with_env(cmd, args, &[])
+}
+
+fn run_command_with_env(cmd: &str, args: &[&str], env: &[(&str, &str)]) -> Result<()> {
+  let mut command = Command::new(cmd);
+  command.args(args);
+  for (key, val) in env {
+    command.env(key, val);
+  }
+  let status = command.status()?;
 
   if !status.success() {
     anyhow::bail!("Command failed: {} {}", cmd, args.join(" "));

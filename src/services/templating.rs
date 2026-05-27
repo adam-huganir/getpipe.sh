@@ -3,7 +3,6 @@ use crate::error::AppError;
 use crate::http::query::InstallQueryOptions;
 use crate::supported_apps::DownloadInfo;
 use crate::templates::TEMPLATES;
-use log::warn;
 use serde_json::Value;
 use tera::Context;
 
@@ -19,10 +18,13 @@ pub(crate) fn render_install_script(
 
   let rendered = match os {
     TargetOs::Windows => (TEMPLATES.render("install.ps1", &tera_context)?, "ps1"),
-    TargetOs::Linux => (TEMPLATES.render("install.sh", &tera_context)?, "sh"),
-    _ => {
-      warn!("Unsupported OS: {}, defaulting to Linux", os);
+    TargetOs::Linux | TargetOs::Mac | TargetOs::Freebsd | TargetOs::Openbsd | TargetOs::Netbsd => {
       (TEMPLATES.render("install.sh", &tera_context)?, "sh")
+    }
+    TargetOs::Unknown => {
+      return Err(AppError::InvalidInput(
+        "unknown OS; set os= to one of: linux, mac, windows, freebsd, openbsd, netbsd".to_string(),
+      ));
     }
   };
 

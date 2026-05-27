@@ -236,12 +236,11 @@ switch ($_type) {
         }
 
         # Find executable files
-        $executable_files = @()
-        Get-ChildItem -Recurse -File | ForEach-Object {
-            if ($_.Extension -eq ".exe" -or $_.Extension -eq "" -or $_.Name -notmatch '\.') {
-                $executable_files += $_.FullName
-            }
-        }
+        $executable_files = @(
+            Get-ChildItem -Recurse -File |
+            Where-Object { $_.Extension -eq ".exe" -or $_.Extension -eq "" -or $_.Name -notmatch '\.' } |
+            ForEach-Object { $_.FullName }
+        )
 
         if ($executable_files.Count -eq 0) {
             [Console]::Error.WriteLine("no executable files found in archive")
