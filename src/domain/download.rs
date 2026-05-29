@@ -40,9 +40,6 @@ mod tests {
   }
 
   #[test]
-  fn test_assumptions() {}
-
-  #[test]
   fn test_identify() {
     let cases = vec![
       Itc::new(
@@ -302,5 +299,27 @@ mod tests {
     for case in cases {
       assert_eq!(Target::identify(&case.input, None), case.expected);
     }
+  }
+
+  // Ordering regression tests — ensure substring overlaps don't cause misidentification.
+  #[test]
+  fn test_darwin_is_mac_not_windows() {
+    // "darwin" contains the substring "win"; TargetOs must return Mac, not Windows.
+    let t = Target::identify("tool_darwin_amd64", None);
+    assert_eq!(t.deployment.os, TargetOs::Mac);
+  }
+
+  #[test]
+  fn test_mips64le_is_not_x86() {
+    // "mips64le" contains "386"-adjacent patterns; must return Mips64Le, not x86.
+    let t = Target::identify("tool_linux_mips64le", None);
+    assert_eq!(t.deployment.arch, TargetArch::Mips64Le);
+  }
+
+  #[test]
+  fn test_tar_gz_is_not_bare_gz() {
+    // ".tar.gz" ends with both "gz" and "tar.gz"; must return TarGz, not Gzip.
+    let t = Target::identify("tool_linux_amd64.tar.gz", None);
+    assert_eq!(t.filetype, Filetype::Archive(ArchiveType::TarGz));
   }
 }

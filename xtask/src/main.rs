@@ -70,7 +70,7 @@ fn lint() -> Result<()> {
 
 fn test() -> Result<()> {
   println!("🧪 Running tests...");
-  run_command("cargo", &["test", "--all"])?;
+  run_command("cargo", &["test", "--workspace"])?;
   println!("✅ Tests passed successfully");
   Ok(())
 }
@@ -131,7 +131,12 @@ fn run_command_with_env(cmd: &str, args: &[&str], env: &[(&str, &str)]) -> Resul
   let status = command.status()?;
 
   if !status.success() {
-    anyhow::bail!("Command failed: {} {}", cmd, args.join(" "));
+    anyhow::bail!(
+      "Command failed (exit {}): {} {}",
+      status.code().unwrap_or(-1),
+      cmd,
+      args.join(" ")
+    );
   }
 
   Ok(())

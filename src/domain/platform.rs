@@ -60,6 +60,7 @@ impl TargetOs {
     let normed_input = input.to_lowercase();
     let win = ["win", "windows"];
     let linux = ["linux"];
+    // "darwin" contains the substring "win"; mac MUST be checked before windows.
     let mac = ["mac", "macos", "osx", "darwin"];
     let freebsd = ["freebsd"];
     let openbsd = ["openbsd"];
@@ -74,6 +75,7 @@ impl TargetOs {
     if netbsd.iter().any(|x| normed_input.contains(x)) {
       return TargetOs::Netbsd;
     }
+    // Check mac before windows — "darwin" contains "win" as a substring.
     if mac.iter().any(|x| normed_input.contains(x)) {
       return TargetOs::Mac;
     }
@@ -151,11 +153,15 @@ impl TargetArch {
   pub(crate) fn identify(input: &str) -> TargetArch {
     let input = input.to_lowercase();
     let amd = ["amd64", "x64", "x86_64"];
+    // "386" is in x86 but is a substring of e.g. "i386"; checked after all mips variants.
     let x86 = ["x86", "i386", "i686", "x86_32", "386", "686", "ia32"];
+    // "arm64"/"aarch64" checked before "arm" — "arm" is a substring of "arm64".
     let arm64 = ["arm64", "aarch64"];
     let arm32 = ["arm"];
     let ppcle = ["ppc64le", "ppc64el", "ppcle"];
+    // "ppc" checked after "ppc64le"/"ppc64el" — "ppc" is a substring of "ppc64".
     let ppc = ["ppc", "ppc64", "powerpc"];
+    // mips variants checked most-specific first: mips64le → mips64 → mipsle → mips.
     let mips64le = ["mips64le"];
     let mips64 = ["mips64"];
     let mipsle = ["mipsle", "mipsel"];

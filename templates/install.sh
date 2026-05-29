@@ -9,7 +9,6 @@ set -euo pipefail
 _E_GENERIC_ERROR=1
 {% if (assets | length  > 0) %}
 _ORIG_DIR="$PWD"
-_QUIET={{ quiet | escape_shell }}
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
 

@@ -19,8 +19,6 @@ macro_rules! safe_int_cast {
   }};
 }
 
-const GITHUB_API: &str = "https://api.github.com";
-
 pub(crate) fn get_app(name: &str) -> Option<SupportedApp> {
   SUPPORTED_APPS.get(name).cloned()
 }
@@ -76,7 +74,7 @@ pub(crate) enum Repo {
 
 impl Repo {
   pub(crate) fn github(repo: &str) -> Self {
-    Self::Github(format!("{}/repos/{}", GITHUB_API, repo))
+    Self::Github(format!("https://api.github.com/repos/{}", repo))
   }
 
   #[allow(dead_code)]

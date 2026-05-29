@@ -42,18 +42,18 @@ impl Display for ArchiveType {
 
 impl ArchiveType {
   fn identify(input: &str) -> Option<ArchiveType> {
-    let tar = ["tar"];
+    // All checks use ends_with, not contains. Order still matters: more-specific
+    // extensions must come before less-specific ones that are suffixes of them
+    // (e.g. "tar.gz" before "gz", "tar.gz" before "tar").
     let tar_gz = ["tar.gz", "tgz"];
     let tar_bz2 = ["tar.bz2"];
     let tar_xz = ["tar.xz"];
-    let z7z = ["7z"];
-    let rar = ["rar"];
+    let tar = ["tar"];
     let gz = ["gz"];
+    let z7z = ["7z"];
     let zip = ["zip"];
+    let rar = ["rar"];
 
-    if tar.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Tar);
-    }
     if tar_gz.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::TarGz);
     }
@@ -63,6 +63,14 @@ impl ArchiveType {
     if tar_xz.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::TarXz);
     }
+    // Bare ".tar" after all "tar.*" variants.
+    if tar.iter().any(|x| input.ends_with(x)) {
+      return Some(ArchiveType::Tar);
+    }
+    // Bare ".gz" after "tar.gz" — a ".tar.gz" also ends_with ".gz".
+    if gz.iter().any(|x| input.ends_with(x)) {
+      return Some(ArchiveType::Gzip);
+    }
     if z7z.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::_7z);
     }
@@ -71,9 +79,6 @@ impl ArchiveType {
     }
     if rar.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::Rar);
-    }
-    if gz.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Gzip);
     }
     None
   }

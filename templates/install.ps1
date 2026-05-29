@@ -9,7 +9,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 {% if (assets | length > 0) %}
 $_ORIG_DIR = $PWD.Path
-$_QUIET = {{ quiet | escape_shell }}
 $_FORCE = {{ force | escape_shell }}
 $_CANONICAL_BINARY_NAME = {{ app | escape_shell }}
 
