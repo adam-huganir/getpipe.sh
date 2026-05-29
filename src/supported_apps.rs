@@ -1,9 +1,6 @@
 use crate::domain::download::Target;
-use crate::domain::platform::TargetDeployment;
 use crate::error::AppError;
-use crate::providers::gh::get_github_download_links;
 use mime::Mime;
-use serde_json::json;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::LazyLock;
@@ -18,8 +15,6 @@ macro_rules! safe_int_cast {
     }
   }};
 }
-
-const GITHUB_API: &str = "https://api.github.com";
 
 pub(crate) fn get_app(name: &str) -> Option<SupportedApp> {
   SUPPORTED_APPS.get(name).cloned()
@@ -46,16 +41,50 @@ impl SupportedApp {
 static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| {
   let mut map = HashMap::new();
   for (app, github_url) in [
+    // --- Query / data tools ---
     ("yq", "mikefarah/yq"),
     ("jq", "jqlang/jq"),
-    ("gh", "cli/cli"),
     ("jsonnet", "google/go-jsonnet"),
+    // --- GitHub CLI ---
+    ("gh", "cli/cli"),
+    // --- Shell / script utilities ---
     ("shellcheck", "koalaman/shellcheck"),
     ("shfmt", "mvdan/sh"),
-    ("yutc", "adam-huganir/yutc"),
+    // --- Terminal utilities ---
+    ("rg", "BurntSushi/ripgrep"),
+    ("fd", "sharkdp/fd"),
+    ("bat", "sharkdp/bat"),
+    ("delta", "dandavison/delta"),
+    ("fzf", "junegunn/fzf"),
+    ("zoxide", "ajeetdsouza/zoxide"),
+    ("starship", "starship-rs/starship"),
+    ("lazygit", "jesseduffield/lazygit"),
+    ("eza", "eza-community/eza"),
+    // --- Build / task runners ---
+    ("just", "casey/just"),
+    ("task", "go-task/task"),
+    ("mise", "jdx/mise"),
+    ("goreleaser", "goreleaser/goreleaser"),
+    // --- Kubernetes / infrastructure ---
     ("kubectl", "kubernetes/kubectl"),
     ("helm", "helm/helm"),
+    ("k9s", "derailed/k9s"),
+    ("flux", "fluxcd/flux2"),
+    ("cilium", "cilium/cilium-cli"),
+    ("kustomize", "kubernetes-sigs/kustomize"),
+    ("istioctl", "istio/istio"),
+    ("stern", "stern/stern"),
+    // --- Disk utilities ---
+    ("dust", "bootandy/dust"),
+    // --- Security / secrets ---
+    ("age", "FiloSottile/age"),
+    ("sops", "getsops/sops"),
+    ("cosign", "sigstore/cosign"),
+    ("syft", "anchore/syft"),
+    // --- Python tooling ---
     ("uv", "astral-sh/uv"),
+    // --- Misc ---
+    ("yutc", "adam-huganir/yutc"),
   ] {
     let _ = map.insert(
       app,
@@ -68,34 +97,16 @@ static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub(crate) enum Repo {
   Github(String),
-  #[allow(dead_code)]
-  Url(String),
-  #[allow(dead_code)]
-  Python(String),
 }
 
 impl Repo {
   pub(crate) fn github(repo: &str) -> Self {
-    Self::Github(format!("{}/repos/{}", GITHUB_API, repo))
-  }
-
-  #[allow(dead_code)]
-  fn url(url: &str) -> Self {
-    Self::Url(url.to_string())
-  }
-
-  #[allow(dead_code)]
-  fn python(app: &str) -> Self {
-    Self::Python(format!("https://pypi.org/simple/{}", app))
+    Self::Github(format!("https://api.github.com/repos/{}", repo))
   }
 
   fn get_url(&self) -> Result<Url, AppError> {
-    let parsed = match self {
-      Repo::Github(repo) => Url::parse(repo),
-      Repo::Url(url) => Url::parse(url),
-      Repo::Python(url) => Url::parse(url),
-    };
-    parsed.map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
+    let Repo::Github(repo) = self;
+    Url::parse(repo).map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
   }
 
   pub(crate) fn get_github_repo(&self) -> Result<String, AppError> {
@@ -106,25 +117,6 @@ impl Repo {
         .trim_start_matches("/repos/")
         .to_string(),
     )
-  }
-
-  #[allow(dead_code)]
-  pub(crate) async fn get_download_link(
-    &self,
-    version: &str,
-    target_deployment: &TargetDeployment,
-  ) -> Result<Vec<DownloadInfo>, AppError> {
-    match self {
-      Repo::Github(_) => get_github_download_links(self, target_deployment, version).await,
-      Repo::Url(url) => Err(AppError::InvalidInput(format!(
-        "{} is not a github repo",
-        url
-      ))),
-      Repo::Python(url) => Err(AppError::InvalidInput(format!(
-        "{} is not a github repo",
-        url
-      ))),
-    }
   }
 }
 
@@ -157,17 +149,39 @@ impl DownloadInfo {
     }
   }
 
+  /// Serializes this asset for use as a Tera template variable.
+  /// Delegates to the `Serialize` impl; adding a field there automatically
+  /// makes it available in templates.
   pub(crate) fn json(&self) -> serde_json::Value {
-    json!({
-        "name": self.name,
-        "label": self.label,
-        "url": self.url.to_string(),
-        "content_type": self.content_type.to_string(),
-        "filetype": self.target.filetype.to_string(),
-        "os": self.target.deployment.os.to_string(),
-        "arch": self.target.deployment.arch.to_string(),
-        "size": self.size
-    })
+    // Serialization of in-memory string/integer fields is infallible.
+    serde_json::to_value(self).expect("DownloadInfo serialization is infallible")
+  }
+}
+
+/// Custom `Serialize` impl for `DownloadInfo`.
+///
+/// `Mime` and the domain enums (`Filetype`, `TargetOs`, `TargetArch`) do not
+/// serialize to the string representation that templates expect, so each field
+/// is explicitly converted to its `Display` form.  When you add a new field to
+/// `DownloadInfo` that templates need, add a matching line here — the compiler
+/// will remind you if you forget to update the field count in
+/// `serialize_struct`.
+impl serde::Serialize for DownloadInfo {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    use serde::ser::SerializeStruct;
+    let mut s = serializer.serialize_struct("DownloadInfo", 8)?;
+    s.serialize_field("name", &self.name)?;
+    s.serialize_field("label", &self.label)?;
+    s.serialize_field("url", &self.url.to_string())?;
+    s.serialize_field("content_type", &self.content_type.to_string())?;
+    s.serialize_field("filetype", &self.target.filetype.to_string())?;
+    s.serialize_field("os", &self.target.deployment.os.to_string())?;
+    s.serialize_field("arch", &self.target.deployment.arch.to_string())?;
+    s.serialize_field("size", &self.size)?;
+    s.end()
   }
 }
 

@@ -5,7 +5,8 @@ use std::fmt::Display;
 use utoipa::ToSchema;
 
 macro_rules! impl_caseless_deserialize {
-    ($enum_type:ident) => {
+    // Two-arg form: $description is shown in error messages (e.g. in a 400 response body).
+    ($enum_type:ident, $description:literal) => {
         paste! {
             struct [<$enum_type Visitor>];
 
@@ -13,14 +14,18 @@ macro_rules! impl_caseless_deserialize {
                 type Value = $enum_type;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    formatter.write_str("Expected string, case insensitive")
+                    formatter.write_str($description)
                 }
 
                 fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
                 where
                     E: Error,
                 {
-                    Ok($enum_type::identify(v))
+                    let result = $enum_type::identify(v);
+                    if result == $enum_type::Unknown {
+                        return Err(E::invalid_value(serde::de::Unexpected::Str(v), &self));
+                    }
+                    Ok(result)
                 }
             }
 
@@ -47,7 +52,10 @@ pub(crate) enum TargetOs {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetOs);
+impl_caseless_deserialize!(
+  TargetOs,
+  "a recognized OS name: linux, mac, windows, freebsd, openbsd, netbsd"
+);
 
 impl From<&str> for TargetOs {
   fn from(input: &str) -> Self {
@@ -60,6 +68,7 @@ impl TargetOs {
     let normed_input = input.to_lowercase();
     let win = ["win", "windows"];
     let linux = ["linux"];
+    // "darwin" contains the substring "win"; mac MUST be checked before windows.
     let mac = ["mac", "macos", "osx", "darwin"];
     let freebsd = ["freebsd"];
     let openbsd = ["openbsd"];
@@ -74,6 +83,7 @@ impl TargetOs {
     if netbsd.iter().any(|x| normed_input.contains(x)) {
       return TargetOs::Netbsd;
     }
+    // Check mac before windows — "darwin" contains "win" as a substring.
     if mac.iter().any(|x| normed_input.contains(x)) {
       return TargetOs::Mac;
     }
@@ -105,8 +115,8 @@ impl Display for TargetOs {
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 pub(crate) enum TargetArch {
   Amd64,
+  /// Covers both `arm64` (Apple/Linux naming) and `aarch64` (Red Had/Fedora/Others).
   Arm64,
-  Aarch64,
   PPCLe,
   PPC,
   Arm32,
@@ -120,7 +130,10 @@ pub(crate) enum TargetArch {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetArch);
+impl_caseless_deserialize!(
+  TargetArch,
+  "a recognized architecture name: amd64, arm64, x86, arm, mips64le, mips64, mipsle, mips, ppc64le, ppc64, riscv"
+);
 
 impl From<&str> for TargetArch {
   fn from(value: &str) -> Self {
@@ -133,7 +146,6 @@ impl Display for TargetArch {
     match self {
       TargetArch::Amd64 => write!(f, "amd64"),
       TargetArch::Arm64 => write!(f, "arm64"),
-      TargetArch::Aarch64 => write!(f, "aarch64"),
       TargetArch::PPC => write!(f, "ppc64"),
       TargetArch::PPCLe => write!(f, "ppc64le"),
       TargetArch::Arm32 => write!(f, "arm"),
@@ -150,13 +162,17 @@ impl Display for TargetArch {
 
 impl TargetArch {
   pub(crate) fn identify(input: &str) -> TargetArch {
+    let input = input.to_lowercase();
     let amd = ["amd64", "x64", "x86_64"];
+    // "386" is in x86 but is a substring of e.g. "i386"; checked after all mips variants.
     let x86 = ["x86", "i386", "i686", "x86_32", "386", "686", "ia32"];
-    let arm = ["arm64"];
+    // "arm64"/"aarch64" checked before "arm" — "arm" is a substring of "arm64".
+    let arm64 = ["arm64", "aarch64"];
     let arm32 = ["arm"];
-    let aarch = ["aarch64"];
     let ppcle = ["ppc64le", "ppc64el", "ppcle"];
+    // "ppc" checked after "ppc64le"/"ppc64el" — "ppc" is a substring of "ppc64".
     let ppc = ["ppc", "ppc64", "powerpc"];
+    // mips variants checked most-specific first: mips64le → mips64 → mipsle → mips.
     let mips64le = ["mips64le"];
     let mips64 = ["mips64"];
     let mipsle = ["mipsle", "mipsel"];
@@ -166,11 +182,8 @@ impl TargetArch {
     if amd.iter().any(|x| input.contains(x)) {
       return TargetArch::Amd64;
     }
-    if arm.iter().any(|x| input.contains(x)) {
+    if arm64.iter().any(|x| input.contains(x)) {
       return TargetArch::Arm64;
-    }
-    if aarch.iter().any(|x| input.contains(x)) {
-      return TargetArch::Aarch64;
     }
     if ppcle.iter().any(|x| input.contains(x)) {
       return TargetArch::PPCLe;

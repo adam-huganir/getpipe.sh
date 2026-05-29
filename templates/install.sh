@@ -6,13 +6,11 @@
 # 01) Runtime Setup
 #------------------------------------------------------------------------------
 set -euo pipefail
+_E_GENERIC_ERROR=1
 {% if (assets | length  > 0) %}
-RUN_DIRECTORY="$PWD"
-_QUIET={{ quiet | escape_shell }}
+_ORIG_DIR="$PWD"
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
-
-_E_GENERIC_ERROR=1
 
 #------------------------------------------------------------------------------
 # 02) Temporary Workspace and Exit Cleanup
@@ -25,31 +23,17 @@ trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \
 # 03) Interactive Choice Prompt
 #------------------------------------------------------------------------------
 _ask_choices() {
-  local choice choices opt add_none add_quit idx
-  opt="$(getopt -o "" --long "none,quit" -n "${FUNCNAME[0]}" -- "$@")"
-  if [ "$?" -ne 0 ]; then
-    printf "invalid options\n" >&2
-    exit 1
-  fi
-  eval set -- "$opt"
+  local OPTIND opt add_none add_quit idx choices choice
   add_none=false
   add_quit=false
-  while true; do
-    case "$1" in
-      --quit)
-        add_quit=true
-        shift
-        ;;
-      --none)
-        add_none=true
-        shift
-        ;;
-      --)
-        shift
-        break
-        ;;
+  while getopts "nq" opt; do
+    case "$opt" in
+      n) add_none=true ;;
+      q) add_quit=true ;;
+      *) printf "invalid option\n" >&2; exit 1 ;;
     esac
   done
+  shift $((OPTIND - 1))
   choices=("$@")
   {% raw %}
   if [ "${#choices[@]}" -eq 0 ]; then
@@ -101,7 +85,52 @@ _urlget() {
 }
 
 #------------------------------------------------------------------------------
-# 05) Rendered Asset Arrays
+# 05) Overwrite Guard
+#------------------------------------------------------------------------------
+# Exits with 0 (skip) if the destination already exists and the user declines.
+# Skipped entirely when _FORCE='true'.
+_confirm_overwrite() {
+  local dest="$1" _ow_answer
+  if [ -e "$dest" ] && [ "$_FORCE" != 'true' ]; then
+    printf "%s already exists. Overwrite? [y/N] " "$dest" >&2
+    read -r _ow_answer </dev/tty
+    case "$_ow_answer" in
+      [yY]|[yY][eE][sS]) ;;
+      *) printf "skipping installation\n" >&2; exit 0 ;;
+    esac
+  fi
+}
+
+#------------------------------------------------------------------------------
+# 06) Installation Prefix
+#------------------------------------------------------------------------------
+{% if prefix and prefix != "auto" %}
+RUN_DIRECTORY={{ prefix | escape_shell }}
+{% else %}
+_detect_prefix() {
+  # 1. Running as root → system-wide location
+  if [ "$(id -u)" = "0" ]; then
+    printf "/usr/local"
+    return
+  fi
+  # 2. Per-user local bin exists → use $HOME/.local
+  if [ -d "$HOME/.local/bin" ]; then
+    printf "%s/.local" "$HOME"
+    return
+  fi
+  # 3. $HOME/bin exists → use $HOME
+  if [ -d "$HOME/bin" ]; then
+    printf "%s" "$HOME"
+    return
+  fi
+  # 4. Fallback: directory from which the script was invoked
+  printf "%s" "$_ORIG_DIR"
+}
+RUN_DIRECTORY="$(_detect_prefix)"
+{% endif %}
+
+#------------------------------------------------------------------------------
+# 07) Rendered Asset Arrays
 #------------------------------------------------------------------------------
 _urls=( {% for asset in assets %}
   {{ asset.url | escape_shell }}
@@ -112,13 +141,13 @@ _filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% end
 _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
 
 #------------------------------------------------------------------------------
-# 06) Asset Selection
+# 08) Asset Selection
 #------------------------------------------------------------------------------
 printf "Please select one of the following:\n"
-choice="$(_ask_choices --quit "${_printables[@]}")"
+choice="$(_ask_choices -q "${_printables[@]}")"
 
 #------------------------------------------------------------------------------
-# 07) Selection Validation
+# 09) Selection Validation
 #------------------------------------------------------------------------------
 case "$choice" in
   q|n)
@@ -137,7 +166,7 @@ case "$choice" in
 esac
 
 #------------------------------------------------------------------------------
-# 08) Download and Install Dispatch
+# 10) Download and Install Dispatch
 #------------------------------------------------------------------------------
 printf "Downloading from %s to %s\n" "${_urls[$choice]}" "$_TMPDIR"
 _type="${_filetypes[$choice]}"
@@ -167,6 +196,7 @@ case "$_type" in
       read -r -p "enter alternate binary directory (default: $RUN_DIRECTORY/bin): " binary_dir </dev/tty
       binary_dir="${binary_dir:-$RUN_DIRECTORY/bin}"
       mkdir -p "$binary_dir"
+      _confirm_overwrite "$binary_dir/$binary_name"
       cp "$saved_file" "$binary_dir/$binary_name"
     else
       printf "invalid filetype: %s\n" "$_type" >&2
@@ -174,23 +204,30 @@ case "$_type" in
     fi
     ;;
   "tar.gz")
-    filename="${_filenames[$choice]}"
     _urlget "${_urls[$choice]}" | tar xz
     executable_files=(
       $(find . -type f -executable -exec printf '{} ' \;)
     )
+    {# raw block here to allow for the comment looking shell op #}
     {% raw %}
-    if [ "${#executable_files[@]}" -eq 0 ]; then  {# raw block here to allow for the comment looking shell op #}
+    if [ "${#executable_files[@]}" -eq 0 ]; then
     {% endraw %}
       printf "no executable files found in archive\n" >&2
       exit 100
     else
-      choices="$(_ask_choices --quit "${executable_files[@]}")"
+      choices="$(_ask_choices -q "${executable_files[@]}")"
     fi
     for choice in $choices; do
       case "$choice" in
         [0-9]*)
-          cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin"
+          mkdir -p "$RUN_DIRECTORY/bin"
+          if [ -n "$_CANONICAL_BINARY_NAME" ]; then
+            _dest_name="$_CANONICAL_BINARY_NAME"
+          else
+            _dest_name="$(basename "${executable_files[$choice]}")"
+          fi
+          _confirm_overwrite "$RUN_DIRECTORY/bin/$_dest_name"
+          cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin/$_dest_name"
           ;;
       esac
     done
@@ -202,7 +239,7 @@ case "$_type" in
 esac
 {% else %}
 #------------------------------------------------------------------------------
-# 09) No Assets Available
+# 11) No Assets Available
 #------------------------------------------------------------------------------
 printf "no assets found\n" >&2
 exit 100

@@ -2,7 +2,7 @@
   "variable": {
     "CONTEXT": { "default": "." },
     "DOCKERFILE": { "default": "Dockerfile" },
-    "IMAGE": { "default": "us-east1-docker.pkg.dev/getpipe-sh/images/server" },
+    "IMAGE": { "default": "gcr.io/getpipe-sh/server" },
     "TAG": { "default": "dev" },
     "PLATFORMS": { "type": "list(string)", "default": ["linux/amd64"] }
   },

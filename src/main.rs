@@ -1,7 +1,7 @@
 use anyhow::Context;
 use axum::{
   Router,
-  extract::{Path, Query, Request},
+  extract::{DefaultBodyLimit, Path, Query, Request},
   http::{
     HeaderMap, HeaderValue, Method, StatusCode, Uri,
     header::{ACCEPT, CONTENT_TYPE},
@@ -267,9 +267,35 @@ async fn run_server(serve_args: Option<&cli::ServeArgs>) -> anyhow::Result<()> {
     .context("failed to bind TCP listener")?;
 
   axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .context("axum server exited with error")?;
   Ok(())
+}
+
+async fn shutdown_signal() {
+  let ctrl_c = async {
+    tokio::signal::ctrl_c()
+      .await
+      .expect("failed to install Ctrl+C handler");
+  };
+
+  #[cfg(unix)]
+  let terminate = async {
+    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+      .expect("failed to install SIGTERM handler")
+      .recv()
+      .await;
+  };
+
+  #[cfg(not(unix))]
+  let terminate = std::future::pending::<()>();
+
+  tokio::select! {
+    _ = ctrl_c => {},
+    _ = terminate => {},
+  }
+  info!("shutdown signal received, draining in-flight requests");
 }
 
 #[tokio::main]
@@ -318,8 +344,10 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn build_cors_layer() -> anyhow::Result<CorsLayer> {
-  let raw_origins = env::var("CORS_ALLOWED_ORIGINS")
-    .unwrap_or_else(|_| "http://localhost:8000,https://getpipe.sh".to_string());
+  let raw_origins = env::var("CORS_ALLOWED_ORIGINS").unwrap_or_else(|_| {
+    warn!("CORS_ALLOWED_ORIGINS not set; defaulting to https://getpipe.sh only");
+    "https://getpipe.sh".to_string()
+  });
   let origins: Vec<HeaderValue> = raw_origins
     .split(',')
     .map(str::trim)
@@ -347,16 +375,17 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
   let mut app = Router::new()
     .route("/", get(root_handler))
     .route("/install", get(install_latest_redirect))
-    .route("/install/{app}", get(install_latest_redirect))
-    .route("/install/{user}/{repo}", get(install_latest_redirect))
+    .route("/install/{*rest}", get(install_latest_redirect))
     .route("/favicon.ico", get(favicon))
     .nest("/v1", v1_router)
     .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
     .fallback(not_found_handler)
-    .layer(cors);
+    .layer(cors)
+    .layer(DefaultBodyLimit::max(16 * 1024));
 
   if log_requests_enabled {
     debug!("request logging middleware enabled");
+    // Added last so it wraps outermost (executes first), giving accurate end-to-end timing.
     app = app.layer(middleware::from_fn(log_requests_middleware));
   }
 
