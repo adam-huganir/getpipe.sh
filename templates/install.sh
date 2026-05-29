@@ -8,7 +8,7 @@
 set -euo pipefail
 _E_GENERIC_ERROR=1
 {% if (assets | length  > 0) %}
-RUN_DIRECTORY={% if prefix %}{{ prefix | escape_shell }}{% else %}"$HOME/.local"{% endif %}
+_ORIG_DIR="$PWD"
 _QUIET={{ quiet | escape_shell }}
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
@@ -86,7 +86,35 @@ _urlget() {
 }
 
 #------------------------------------------------------------------------------
-# 05) Rendered Asset Arrays
+# 05) Installation Prefix
+#------------------------------------------------------------------------------
+{% if prefix and prefix != "auto" %}
+RUN_DIRECTORY={{ prefix | escape_shell }}
+{% else %}
+_detect_prefix() {
+  # 1. Running as root → system-wide location
+  if [ "$(id -u)" = "0" ]; then
+    printf "/usr/local"
+    return
+  fi
+  # 2. Per-user local bin exists → use $HOME/.local
+  if [ -d "$HOME/.local/bin" ]; then
+    printf "%s/.local" "$HOME"
+    return
+  fi
+  # 3. $HOME/bin exists → use $HOME
+  if [ -d "$HOME/bin" ]; then
+    printf "%s" "$HOME"
+    return
+  fi
+  # 4. Fallback: directory from which the script was invoked
+  printf "%s" "$_ORIG_DIR"
+}
+RUN_DIRECTORY="$(_detect_prefix)"
+{% endif %}
+
+#------------------------------------------------------------------------------
+# 06) Rendered Asset Arrays
 #------------------------------------------------------------------------------
 _urls=( {% for asset in assets %}
   {{ asset.url | escape_shell }}
@@ -97,13 +125,13 @@ _filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% end
 _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
 
 #------------------------------------------------------------------------------
-# 06) Asset Selection
+# 07) Asset Selection
 #------------------------------------------------------------------------------
 printf "Please select one of the following:\n"
 choice="$(_ask_choices -q "${_printables[@]}")"
 
 #------------------------------------------------------------------------------
-# 07) Selection Validation
+# 08) Selection Validation
 #------------------------------------------------------------------------------
 case "$choice" in
   q|n)
@@ -122,7 +150,7 @@ case "$choice" in
 esac
 
 #------------------------------------------------------------------------------
-# 08) Download and Install Dispatch
+# 09) Download and Install Dispatch
 #------------------------------------------------------------------------------
 printf "Downloading from %s to %s\n" "${_urls[$choice]}" "$_TMPDIR"
 _type="${_filetypes[$choice]}"
@@ -175,6 +203,7 @@ case "$_type" in
     for choice in $choices; do
       case "$choice" in
         [0-9]*)
+          mkdir -p "$RUN_DIRECTORY/bin"
           cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin"
           ;;
       esac
@@ -187,7 +216,7 @@ case "$_type" in
 esac
 {% else %}
 #------------------------------------------------------------------------------
-# 09) No Assets Available
+# 10) No Assets Available
 #------------------------------------------------------------------------------
 printf "no assets found\n" >&2
 exit 100

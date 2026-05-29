@@ -59,9 +59,10 @@ fn default_latest() -> String {
 }
 
 fn default_prefix() -> String {
-  // Empty string — each template applies its own platform-appropriate default
-  // (install.sh: $HOME/.local, install.ps1: $env:LOCALAPPDATA\Programs)
-  String::new()
+  // "auto" — each template runs its own detection at install time:
+  // bash: root→/usr/local, $HOME/.local/bin→$HOME/.local, $HOME/bin→$HOME, else ./
+  // ps1:  admin→ProgramFiles, LOCALAPPDATA\Programs exists→that, else ./
+  "auto".to_string()
 }
 
 fn default_arch() -> TargetArch {

@@ -8,7 +8,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 {% if (assets | length > 0) %}
-$RUN_DIRECTORY = {% if prefix %}{{ prefix | escape_shell }}{% else %}(Join-Path $env:LOCALAPPDATA "Programs"){% endif %}
+$_ORIG_DIR = $PWD.Path
 $_QUIET = {{ quiet | escape_shell }}
 $_FORCE = {{ force | escape_shell }}
 $_CANONICAL_BINARY_NAME = {{ app | escape_shell }}
@@ -113,7 +113,30 @@ function Get-WebContent {
 }
 
 #------------------------------------------------------------------------------
-# 05) Rendered Asset Arrays
+# 05) Installation Prefix
+#------------------------------------------------------------------------------
+{% if prefix and prefix != "auto" %}
+$RUN_DIRECTORY = {{ prefix | escape_shell }}
+{% else %}
+function Get-AutoPrefix {
+    # 1. Admin → system-wide ProgramFiles
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isAdmin) {
+        return $env:ProgramFiles
+    }
+    # 2. Per-user Programs folder exists → use it
+    $localPrograms = Join-Path $env:LOCALAPPDATA "Programs"
+    if (Test-Path $localPrograms) {
+        return $localPrograms
+    }
+    # 3. Fallback: directory from which the script was invoked
+    return $_ORIG_DIR
+}
+$RUN_DIRECTORY = Get-AutoPrefix
+{% endif %}
+
+#------------------------------------------------------------------------------
+# 06) Rendered Asset Arrays
 #------------------------------------------------------------------------------
 $_urls = @({% for asset in assets %}"{{ asset.url | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
 $_filenames = @({% for asset in assets %}"{{ asset.name | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
@@ -121,13 +144,13 @@ $_filetypes = @({% for asset in assets %}"{{ asset.filetype | escape_shell }}"{%
 $_printables = @({% for asset in assets %}"{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
 
 #------------------------------------------------------------------------------
-# 06) Asset Selection
+# 07) Asset Selection
 #------------------------------------------------------------------------------
 Write-Host "Please select one of the following:"
 $choice = Get-UserChoice -Choices $_printables -AllowQuit
 
 #------------------------------------------------------------------------------
-# 07) Selection Validation
+# 08) Selection Validation
 #------------------------------------------------------------------------------
 if ($choice -eq "q" -or $choice -eq "n") {
     exit 0
@@ -139,7 +162,7 @@ if ($choice -lt 0 -or $choice -ge $_urls.Count) {
 }
 
 #------------------------------------------------------------------------------
-# 08) Download and Install Dispatch
+# 09) Download and Install Dispatch
 #------------------------------------------------------------------------------
 Write-Host "Downloading from $($_urls[$choice]) to $_TMPDIR"
 $_type = $_filetypes[$choice]
@@ -269,7 +292,7 @@ switch ($_type) {
 }
 {% else %}
 #------------------------------------------------------------------------------
-# 09) No Assets Available
+# 10) No Assets Available
 #------------------------------------------------------------------------------
 [Console]::Error.WriteLine("no assets found")
 exit 100
