@@ -18,6 +18,7 @@ pub(crate) static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
     .add_raw_template(install_ps1, content)
     .unwrap_or_else(|e| panic!("failed to add {} template: {}", install_ps1, e));
   tera.register_filter("escape_shell", ShellEscape);
+  tera.register_filter("escape_ps1", Ps1Escape);
   tera.register_filter("enumerate", Enumerate);
   tera
 });
@@ -26,12 +27,40 @@ struct ShellEscape;
 
 impl Filter for ShellEscape {
   fn filter(&self, value: &Value, _args: &HashMap<String, Value>) -> tera::Result<Value> {
-    if let Some(to_escape) = value.as_str() {
-      let escaped: Vec<u8> = Bash::quote(to_escape);
-      Ok(Value::String(String::from_utf8(escaped).unwrap()))
-    } else {
-      Ok(Value::String("".into()))
-    }
+    let s = match value {
+      Value::String(s) => s.clone(),
+      Value::Bool(b) => b.to_string(),
+      Value::Number(n) => n.to_string(),
+      _ => String::new(),
+    };
+    let escaped: Vec<u8> = Bash::quote(&s);
+    Ok(Value::String(String::from_utf8(escaped).unwrap()))
+  }
+}
+
+/// PowerShell-specific escaping filter.
+///
+/// Wraps the value in single quotes and doubles any embedded single quotes.
+/// Single-quoted strings in PowerShell are completely literal — no variable
+/// expansion, no escape sequences — making this the safest general-purpose
+/// quoting strategy.
+///
+/// Booleans and numbers are converted to their string representations first
+/// so that `{{ force | escape_ps1 }}` with `force = false` produces `'false'`,
+/// which compares correctly with PowerShell's `-eq 'true'` checks.
+struct Ps1Escape;
+
+impl Filter for Ps1Escape {
+  fn filter(&self, value: &Value, _args: &HashMap<String, Value>) -> tera::Result<Value> {
+    let s = match value {
+      Value::String(s) => s.clone(),
+      Value::Bool(b) => b.to_string(),
+      Value::Number(n) => n.to_string(),
+      _ => String::new(),
+    };
+    // Wrap in single quotes; escape embedded single quotes by doubling them.
+    let escaped = format!("'{}'", s.replace('\'', "''"));
+    Ok(Value::String(escaped))
   }
 }
 

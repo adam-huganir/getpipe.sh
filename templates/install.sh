@@ -220,8 +220,13 @@ case "$_type" in
       case "$choice" in
         [0-9]*)
           mkdir -p "$RUN_DIRECTORY/bin"
-          _confirm_overwrite "$RUN_DIRECTORY/bin/$(basename "${executable_files[$choice]}")"
-          cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin"
+          if [ -n "$_CANONICAL_BINARY_NAME" ]; then
+            _dest_name="$_CANONICAL_BINARY_NAME"
+          else
+            _dest_name="$(basename "${executable_files[$choice]}")"
+          fi
+          _confirm_overwrite "$RUN_DIRECTORY/bin/$_dest_name"
+          cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin/$_dest_name"
           ;;
       esac
     done
