@@ -70,6 +70,8 @@ impl AppError {
   }
 }
 
+impl std::error::Error for AppError {}
+
 impl std::fmt::Display for AppError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}: {}", self.code(), self.message())
@@ -106,7 +108,7 @@ impl From<octocrab::Error> for AppError {
         "{} ({}) {}",
         source.message,
         source.status_code,
-        source.documentation_url.unwrap_or("".to_string())
+        source.documentation_url.unwrap_or_default()
       )),
       other => Self::OctocrabError(other.to_string()),
     }
