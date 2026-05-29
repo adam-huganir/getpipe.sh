@@ -29,7 +29,7 @@ $cleanup = {
         [Console]::Error.WriteLine("Removing $_TMPDIR")
         Remove-Item $_TMPDIR -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Set-Location $RUN_DIRECTORY
+    Set-Location $_ORIG_DIR
 }
 
 Register-EngineEvent PowerShell.Exiting -Action $cleanup | Out-Null

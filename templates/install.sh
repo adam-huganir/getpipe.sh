@@ -91,7 +91,7 @@ _urlget() {
 # Exits with 0 (skip) if the destination already exists and the user declines.
 # Skipped entirely when _FORCE='true'.
 _confirm_overwrite() {
-  local dest="$1"
+  local dest="$1" _ow_answer
   if [ -e "$dest" ] && [ "$_FORCE" != 'true' ]; then
     printf "%s already exists. Overwrite? [y/N] " "$dest" >&2
     read -r _ow_answer </dev/tty
@@ -205,7 +205,6 @@ case "$_type" in
     fi
     ;;
   "tar.gz")
-    filename="${_filenames[$choice]}"
     _urlget "${_urls[$choice]}" | tar xz
     executable_files=(
       $(find . -type f -executable -exec printf '{} ' \;)
