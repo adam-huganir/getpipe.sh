@@ -113,7 +113,21 @@ function Get-WebContent {
 }
 
 #------------------------------------------------------------------------------
-# 05) Installation Prefix
+# 05) Overwrite Guard
+#------------------------------------------------------------------------------
+function Confirm-Overwrite {
+    param([string]$Destination)
+    if ((Test-Path $Destination) -and ($_FORCE -ne 'true')) {
+        $answer = Read-Host "$Destination already exists. Overwrite? [y/N]"
+        if ($answer -notmatch '^[yY]') {
+            Write-Host "skipping installation"
+            exit 0
+        }
+    }
+}
+
+#------------------------------------------------------------------------------
+# 06) Installation Prefix
 #------------------------------------------------------------------------------
 {% if prefix and prefix != "auto" %}
 $RUN_DIRECTORY = {{ prefix | escape_shell }}
@@ -136,7 +150,7 @@ $RUN_DIRECTORY = Get-AutoPrefix
 {% endif %}
 
 #------------------------------------------------------------------------------
-# 06) Rendered Asset Arrays
+# 07) Rendered Asset Arrays
 #------------------------------------------------------------------------------
 $_urls = @({% for asset in assets %}"{{ asset.url | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
 $_filenames = @({% for asset in assets %}"{{ asset.name | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
@@ -144,13 +158,13 @@ $_filetypes = @({% for asset in assets %}"{{ asset.filetype | escape_shell }}"{%
 $_printables = @({% for asset in assets %}"{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
 
 #------------------------------------------------------------------------------
-# 07) Asset Selection
+# 08) Asset Selection
 #------------------------------------------------------------------------------
 Write-Host "Please select one of the following:"
 $choice = Get-UserChoice -Choices $_printables -AllowQuit
 
 #------------------------------------------------------------------------------
-# 08) Selection Validation
+# 09) Selection Validation
 #------------------------------------------------------------------------------
 if ($choice -eq "q" -or $choice -eq "n") {
     exit 0
@@ -162,7 +176,7 @@ if ($choice -lt 0 -or $choice -ge $_urls.Count) {
 }
 
 #------------------------------------------------------------------------------
-# 09) Download and Install Dispatch
+# 10) Download and Install Dispatch
 #------------------------------------------------------------------------------
 Write-Host "Downloading from $($_urls[$choice]) to $_TMPDIR"
 $_type = $_filetypes[$choice]
@@ -196,6 +210,7 @@ switch ($_type) {
         }
 
         $dest_path = Join-Path $binary_dir $binary_name
+        Confirm-Overwrite $dest_path
         Copy-Item $saved_file $dest_path -Force
         Write-Host "Installed $binary_name to $dest_path"
     }
@@ -280,6 +295,7 @@ switch ($_type) {
 
                 $dest_name = Split-Path $selected_file -Leaf
                 $dest_path = Join-Path $default_bin_dir $dest_name
+                Confirm-Overwrite $dest_path
                 Copy-Item $selected_file $dest_path -Force
                 Write-Host "Installed $dest_name to $dest_path"
             }
@@ -292,7 +308,7 @@ switch ($_type) {
 }
 {% else %}
 #------------------------------------------------------------------------------
-# 10) No Assets Available
+# 11) No Assets Available
 #------------------------------------------------------------------------------
 [Console]::Error.WriteLine("no assets found")
 exit 100

@@ -86,7 +86,24 @@ _urlget() {
 }
 
 #------------------------------------------------------------------------------
-# 05) Installation Prefix
+# 05) Overwrite Guard
+#------------------------------------------------------------------------------
+# Exits with 0 (skip) if the destination already exists and the user declines.
+# Skipped entirely when _FORCE='true'.
+_confirm_overwrite() {
+  local dest="$1"
+  if [ -e "$dest" ] && [ "$_FORCE" != 'true' ]; then
+    printf "%s already exists. Overwrite? [y/N] " "$dest" >&2
+    read -r _ow_answer </dev/tty
+    case "$_ow_answer" in
+      [yY]|[yY][eE][sS]) ;;
+      *) printf "skipping installation\n" >&2; exit 0 ;;
+    esac
+  fi
+}
+
+#------------------------------------------------------------------------------
+# 06) Installation Prefix
 #------------------------------------------------------------------------------
 {% if prefix and prefix != "auto" %}
 RUN_DIRECTORY={{ prefix | escape_shell }}
@@ -114,7 +131,7 @@ RUN_DIRECTORY="$(_detect_prefix)"
 {% endif %}
 
 #------------------------------------------------------------------------------
-# 06) Rendered Asset Arrays
+# 07) Rendered Asset Arrays
 #------------------------------------------------------------------------------
 _urls=( {% for asset in assets %}
   {{ asset.url | escape_shell }}
@@ -125,13 +142,13 @@ _filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% end
 _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
 
 #------------------------------------------------------------------------------
-# 07) Asset Selection
+# 08) Asset Selection
 #------------------------------------------------------------------------------
 printf "Please select one of the following:\n"
 choice="$(_ask_choices -q "${_printables[@]}")"
 
 #------------------------------------------------------------------------------
-# 08) Selection Validation
+# 09) Selection Validation
 #------------------------------------------------------------------------------
 case "$choice" in
   q|n)
@@ -150,7 +167,7 @@ case "$choice" in
 esac
 
 #------------------------------------------------------------------------------
-# 09) Download and Install Dispatch
+# 10) Download and Install Dispatch
 #------------------------------------------------------------------------------
 printf "Downloading from %s to %s\n" "${_urls[$choice]}" "$_TMPDIR"
 _type="${_filetypes[$choice]}"
@@ -180,6 +197,7 @@ case "$_type" in
       read -r -p "enter alternate binary directory (default: $RUN_DIRECTORY/bin): " binary_dir </dev/tty
       binary_dir="${binary_dir:-$RUN_DIRECTORY/bin}"
       mkdir -p "$binary_dir"
+      _confirm_overwrite "$binary_dir/$binary_name"
       cp "$saved_file" "$binary_dir/$binary_name"
     else
       printf "invalid filetype: %s\n" "$_type" >&2
@@ -204,6 +222,7 @@ case "$_type" in
       case "$choice" in
         [0-9]*)
           mkdir -p "$RUN_DIRECTORY/bin"
+          _confirm_overwrite "$RUN_DIRECTORY/bin/$(basename "${executable_files[$choice]}")"
           cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin"
           ;;
       esac
@@ -216,7 +235,7 @@ case "$_type" in
 esac
 {% else %}
 #------------------------------------------------------------------------------
-# 10) No Assets Available
+# 11) No Assets Available
 #------------------------------------------------------------------------------
 printf "no assets found\n" >&2
 exit 100
