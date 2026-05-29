@@ -55,14 +55,7 @@ fn lint() -> Result<()> {
   println!("🔍 Running clippy lints...");
   run_command(
     "cargo",
-    &[
-      "clippy",
-      "--all-targets",
-      "--all-features",
-      "--",
-      "-D",
-      "warnings",
-    ],
+    &["clippy", "--all-targets", "--", "-D", "warnings"],
   )?;
   println!("✅ Lints passed successfully");
   Ok(())

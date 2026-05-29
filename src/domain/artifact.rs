@@ -4,12 +4,15 @@ use std::fmt::Display;
 use utoipa::ToSchema;
 
 fn get_extensions(filename: &str) -> Vec<String> {
-  let parts: Vec<String> = filename.split('.').skip(1).map(|s| s.to_string()).collect();
-
-  parts
-    .iter()
-    .filter(|x| !x.is_empty() && x.len() <= 4)
-    .cloned()
+  // Split on '.', skip the basename (everything before the first dot).
+  // Filter only empty segments, which arise from leading dots (e.g. ".bashrc")
+  // or consecutive dots.  No length cap — extensions like "sha256" or "jsonl"
+  // are valid and must not be silently dropped.
+  filename
+    .split('.')
+    .skip(1)
+    .filter(|x| !x.is_empty())
+    .map(|s| s.to_string())
     .collect()
 }
 

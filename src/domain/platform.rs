@@ -5,7 +5,8 @@ use std::fmt::Display;
 use utoipa::ToSchema;
 
 macro_rules! impl_caseless_deserialize {
-    ($enum_type:ident) => {
+    // Two-arg form: $description is shown in error messages (e.g. in a 400 response body).
+    ($enum_type:ident, $description:literal) => {
         paste! {
             struct [<$enum_type Visitor>];
 
@@ -13,14 +14,18 @@ macro_rules! impl_caseless_deserialize {
                 type Value = $enum_type;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    formatter.write_str("Expected string, case insensitive")
+                    formatter.write_str($description)
                 }
 
                 fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
                 where
                     E: Error,
                 {
-                    Ok($enum_type::identify(v))
+                    let result = $enum_type::identify(v);
+                    if result == $enum_type::Unknown {
+                        return Err(E::invalid_value(serde::de::Unexpected::Str(v), &self));
+                    }
+                    Ok(result)
                 }
             }
 
@@ -47,7 +52,7 @@ pub(crate) enum TargetOs {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetOs);
+impl_caseless_deserialize!(TargetOs, "a recognized OS name: linux, mac, windows, freebsd, openbsd, netbsd");
 
 impl From<&str> for TargetOs {
   fn from(input: &str) -> Self {
@@ -122,7 +127,7 @@ pub(crate) enum TargetArch {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetArch);
+impl_caseless_deserialize!(TargetArch, "a recognized architecture name: amd64, arm64, x86, arm, mips64le, mips64, mipsle, mips, ppc64le, ppc64, riscv");
 
 impl From<&str> for TargetArch {
   fn from(value: &str) -> Self {

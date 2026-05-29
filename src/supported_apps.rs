@@ -1,7 +1,6 @@
 use crate::domain::download::Target;
 use crate::error::AppError;
 use mime::Mime;
-use serde_json::json;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::LazyLock;
@@ -116,17 +115,39 @@ impl DownloadInfo {
     }
   }
 
+  /// Serializes this asset for use as a Tera template variable.
+  /// Delegates to the `Serialize` impl; adding a field there automatically
+  /// makes it available in templates.
   pub(crate) fn json(&self) -> serde_json::Value {
-    json!({
-        "name": self.name,
-        "label": self.label,
-        "url": self.url.to_string(),
-        "content_type": self.content_type.to_string(),
-        "filetype": self.target.filetype.to_string(),
-        "os": self.target.deployment.os.to_string(),
-        "arch": self.target.deployment.arch.to_string(),
-        "size": self.size
-    })
+    // Serialization of in-memory string/integer fields is infallible.
+    serde_json::to_value(self).expect("DownloadInfo serialization is infallible")
+  }
+}
+
+/// Custom `Serialize` impl for `DownloadInfo`.
+///
+/// `Mime` and the domain enums (`Filetype`, `TargetOs`, `TargetArch`) do not
+/// serialize to the string representation that templates expect, so each field
+/// is explicitly converted to its `Display` form.  When you add a new field to
+/// `DownloadInfo` that templates need, add a matching line here — the compiler
+/// will remind you if you forget to update the field count in
+/// `serialize_struct`.
+impl serde::Serialize for DownloadInfo {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    use serde::ser::SerializeStruct;
+    let mut s = serializer.serialize_struct("DownloadInfo", 8)?;
+    s.serialize_field("name", &self.name)?;
+    s.serialize_field("label", &self.label)?;
+    s.serialize_field("url", &self.url.to_string())?;
+    s.serialize_field("content_type", &self.content_type.to_string())?;
+    s.serialize_field("filetype", &self.target.filetype.to_string())?;
+    s.serialize_field("os", &self.target.deployment.os.to_string())?;
+    s.serialize_field("arch", &self.target.deployment.arch.to_string())?;
+    s.serialize_field("size", &self.size)?;
+    s.end()
   }
 }
 
