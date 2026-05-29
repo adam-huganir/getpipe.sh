@@ -59,7 +59,9 @@ fn default_latest() -> String {
 }
 
 fn default_prefix() -> String {
-  "$HOME/.local".to_string()
+  // Empty string — each template applies its own platform-appropriate default
+  // (install.sh: $HOME/.local, install.ps1: $env:LOCALAPPDATA\Programs)
+  String::new()
 }
 
 fn default_arch() -> TargetArch {

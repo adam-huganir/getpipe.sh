@@ -8,7 +8,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 {% if (assets | length > 0) %}
-$RUN_DIRECTORY = $PWD.Path
+$RUN_DIRECTORY = {% if prefix %}{{ prefix | escape_shell }}{% else %}(Join-Path $env:LOCALAPPDATA "Programs"){% endif %}
 $_QUIET = {{ quiet | escape_shell }}
 $_FORCE = {{ force | escape_shell }}
 $_CANONICAL_BINARY_NAME = {{ app | escape_shell }}

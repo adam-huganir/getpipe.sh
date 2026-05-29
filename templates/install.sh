@@ -8,7 +8,7 @@
 set -euo pipefail
 _E_GENERIC_ERROR=1
 {% if (assets | length  > 0) %}
-RUN_DIRECTORY="$PWD"
+RUN_DIRECTORY={% if prefix %}{{ prefix | escape_shell }}{% else %}"$HOME/.local"{% endif %}
 _QUIET={{ quiet | escape_shell }}
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
