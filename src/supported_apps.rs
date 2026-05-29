@@ -41,16 +41,46 @@ impl SupportedApp {
 static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| {
   let mut map = HashMap::new();
   for (app, github_url) in [
+    // --- Query / data tools ---
     ("yq", "mikefarah/yq"),
     ("jq", "jqlang/jq"),
-    ("gh", "cli/cli"),
     ("jsonnet", "google/go-jsonnet"),
+    // --- GitHub CLI ---
+    ("gh", "cli/cli"),
+    // --- Shell / script utilities ---
     ("shellcheck", "koalaman/shellcheck"),
     ("shfmt", "mvdan/sh"),
-    ("yutc", "adam-huganir/yutc"),
+    // --- Terminal utilities ---
+    ("rg", "BurntSushi/ripgrep"),
+    ("fd", "sharkdp/fd"),
+    ("bat", "sharkdp/bat"),
+    ("delta", "dandavison/delta"),
+    ("fzf", "junegunn/fzf"),
+    ("zoxide", "ajeetdsouza/zoxide"),
+    ("starship", "starship-rs/starship"),
+    ("lazygit", "jesseduffield/lazygit"),
+    ("eza", "eza-community/eza"),
+    // --- Build / task runners ---
+    ("just", "casey/just"),
+    ("task", "go-task/task"),
+    ("mise", "jdx/mise"),
+    ("goreleaser", "goreleaser/goreleaser"),
+    // --- Kubernetes / infrastructure ---
     ("kubectl", "kubernetes/kubectl"),
     ("helm", "helm/helm"),
+    ("k9s", "derailed/k9s"),
+    ("flux", "fluxcd/flux2"),
+    ("cilium", "cilium/cilium-cli"),
+    ("kustomize", "kubernetes-sigs/kustomize"),
+    // --- Security / secrets ---
+    ("age", "FiloSottile/age"),
+    ("sops", "getsops/sops"),
+    ("cosign", "sigstore/cosign"),
+    ("syft", "anchore/syft"),
+    // --- Python tooling ---
     ("uv", "astral-sh/uv"),
+    // --- Misc ---
+    ("yutc", "adam-huganir/yutc"),
   ] {
     let _ = map.insert(
       app,
