@@ -1,7 +1,5 @@
 use crate::domain::download::Target;
-use crate::domain::platform::TargetDeployment;
 use crate::error::AppError;
-use crate::providers::gh::get_github_download_links;
 use mime::Mime;
 use serde_json::json;
 use std::collections::HashMap;
@@ -66,10 +64,6 @@ static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub(crate) enum Repo {
   Github(String),
-  #[allow(dead_code)]
-  Url(String),
-  #[allow(dead_code)]
-  Python(String),
 }
 
 impl Repo {
@@ -77,23 +71,9 @@ impl Repo {
     Self::Github(format!("https://api.github.com/repos/{}", repo))
   }
 
-  #[allow(dead_code)]
-  fn url(url: &str) -> Self {
-    Self::Url(url.to_string())
-  }
-
-  #[allow(dead_code)]
-  fn python(app: &str) -> Self {
-    Self::Python(format!("https://pypi.org/simple/{}", app))
-  }
-
   fn get_url(&self) -> Result<Url, AppError> {
-    let parsed = match self {
-      Repo::Github(repo) => Url::parse(repo),
-      Repo::Url(url) => Url::parse(url),
-      Repo::Python(url) => Url::parse(url),
-    };
-    parsed.map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
+    let Repo::Github(repo) = self;
+    Url::parse(repo).map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
   }
 
   pub(crate) fn get_github_repo(&self) -> Result<String, AppError> {
@@ -104,25 +84,6 @@ impl Repo {
         .trim_start_matches("/repos/")
         .to_string(),
     )
-  }
-
-  #[allow(dead_code)]
-  pub(crate) async fn get_download_link(
-    &self,
-    version: &str,
-    target_deployment: &TargetDeployment,
-  ) -> Result<Vec<DownloadInfo>, AppError> {
-    match self {
-      Repo::Github(_) => get_github_download_links(self, target_deployment, version).await,
-      Repo::Url(url) => Err(AppError::InvalidInput(format!(
-        "{} is not a github repo",
-        url
-      ))),
-      Repo::Python(url) => Err(AppError::InvalidInput(format!(
-        "{} is not a github repo",
-        url
-      ))),
-    }
   }
 }
 

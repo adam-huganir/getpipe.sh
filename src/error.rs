@@ -108,7 +108,7 @@ impl From<octocrab::Error> for AppError {
         source.status_code,
         source.documentation_url.unwrap_or("".to_string())
       )),
-      other => Self::OctocrabError(format!("{:?}", other)),
+      other => Self::OctocrabError(other.to_string()),
     }
   }
 }
