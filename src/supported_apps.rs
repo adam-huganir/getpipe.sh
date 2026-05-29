@@ -72,6 +72,10 @@ static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| 
     ("flux", "fluxcd/flux2"),
     ("cilium", "cilium/cilium-cli"),
     ("kustomize", "kubernetes-sigs/kustomize"),
+    ("istioctl", "istio/istio"),
+    ("stern", "stern/stern"),
+    // --- Disk utilities ---
+    ("dust", "bootandy/dust"),
     // --- Security / secrets ---
     ("age", "FiloSottile/age"),
     ("sops", "getsops/sops"),
