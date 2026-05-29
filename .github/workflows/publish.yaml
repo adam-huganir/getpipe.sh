@@ -32,11 +32,11 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}
+          tags: gcr.io/getpipe-sh/server:${{steps.tag.outputs.SHORTREF}}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: server
-          image: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}
+          image: gcr.io/getpipe-sh/server:${{steps.tag.outputs.SHORTREF}}

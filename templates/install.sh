@@ -208,8 +208,9 @@ case "$_type" in
     executable_files=(
       $(find . -type f -executable -exec printf '{} ' \;)
     )
+    {# raw block here to allow for the comment looking shell op #}
     {% raw %}
-    if [ "${#executable_files[@]}" -eq 0 ]; then  {# raw block here to allow for the comment looking shell op #}
+    if [ "${#executable_files[@]}" -eq 0 ]; then
     {% endraw %}
       printf "no executable files found in archive\n" >&2
       exit 100
