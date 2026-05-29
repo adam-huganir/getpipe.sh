@@ -136,7 +136,10 @@ impl InstallQueryOptions {
     // Build directly as a Map so there is no hidden .unwrap() on the
     // Value::Object extraction that json!() + .as_object() would require.
     let mut map = Map::with_capacity(11);
-    map.insert("app".into(), Value::String(self.app.as_deref().unwrap_or("").to_string()));
+    map.insert(
+      "app".into(),
+      Value::String(self.app.as_deref().unwrap_or("").to_string()),
+    );
     map.insert("version".into(), Value::String(self.version.clone()));
     map.insert("prefix".into(), Value::String(self.prefix.clone()));
     map.insert("arch".into(), Value::String(self.arch.to_string()));

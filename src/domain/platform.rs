@@ -52,7 +52,10 @@ pub(crate) enum TargetOs {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetOs, "a recognized OS name: linux, mac, windows, freebsd, openbsd, netbsd");
+impl_caseless_deserialize!(
+  TargetOs,
+  "a recognized OS name: linux, mac, windows, freebsd, openbsd, netbsd"
+);
 
 impl From<&str> for TargetOs {
   fn from(input: &str) -> Self {
@@ -127,7 +130,10 @@ pub(crate) enum TargetArch {
   Unknown,
 }
 
-impl_caseless_deserialize!(TargetArch, "a recognized architecture name: amd64, arm64, x86, arm, mips64le, mips64, mipsle, mips, ppc64le, ppc64, riscv");
+impl_caseless_deserialize!(
+  TargetArch,
+  "a recognized architecture name: amd64, arm64, x86, arm, mips64le, mips64, mipsle, mips, ppc64le, ppc64, riscv"
+);
 
 impl From<&str> for TargetArch {
   fn from(value: &str) -> Self {
