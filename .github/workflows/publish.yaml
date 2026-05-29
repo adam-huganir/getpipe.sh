@@ -25,6 +25,7 @@ jobs:
           export_environment_variables: true
       - run: gcloud auth configure-docker gcr.io
       - uses: google-github-actions/setup-gcloud@v2
+      - uses: docker/setup-buildx-action@v3
       - name: build and push
         uses: docker/build-push-action@v6
         with:
@@ -32,8 +33,5 @@ jobs:
           file: Dockerfile
           push: true
           tags: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}
-      - id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: server
-          image: us-east1-docker.pkg.dev/getpipe-sh/images/server:${{steps.tag.outputs.SHORTREF}}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
