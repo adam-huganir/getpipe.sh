@@ -22,6 +22,7 @@ jobs:
         with:
           project_id: getpipe-sh
           workload_identity_provider: projects/1059511554636/locations/global/workloadIdentityPools/github/providers/getpipe-sh
+          service_account: github-actions@getpipe-sh.iam.gserviceaccount.com
           export_environment_variables: true
       - run: gcloud auth configure-docker gcr.io
       - uses: google-github-actions/setup-gcloud@v3
