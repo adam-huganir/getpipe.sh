@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
-
-#{# template engine Tera #}
+{# template engine Tera #}
+{%- if (assets | length  > 0) %}
+#------------------------------------------------------------------------------
+# 01) Matching Artifacts
+#------------------------------------------------------------------------------
+_artifacts=( {% for asset in assets %}
+  {{ asset.url | escape_shell }}
+{%- endfor %}
+)
 
 #------------------------------------------------------------------------------
-# 01) Runtime Setup
+# 02) Runtime Setup
 #------------------------------------------------------------------------------
 set -euo pipefail
 _E_GENERIC_ERROR=1
-{% if (assets | length  > 0) %}
 _ORIG_DIR="$PWD"
 _FORCE={{ force | escape_shell }}
 _CANONICAL_BINARY_NAME={{ app | escape_shell }}
 
 #------------------------------------------------------------------------------
-# 02) Temporary Workspace and Exit Cleanup
+# 03) Temporary Workspace and Exit Cleanup
 #------------------------------------------------------------------------------
 _TMPDIR="$(mktemp -d)"
 cd "$_TMPDIR"
 trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \"$_TMPDIR\"" EXIT
 
 #------------------------------------------------------------------------------
-# 03) Interactive Choice Prompt
+# 04) Interactive Choice Prompt
 #------------------------------------------------------------------------------
 _ask_choices() {
   local OPTIND opt add_none add_quit idx choices choice
@@ -71,7 +77,7 @@ _ask_choices() {
 
 
 #------------------------------------------------------------------------------
-# 04) Download Helper
+# 05) Download Helper
 #------------------------------------------------------------------------------
 _urlget() {
   if command -v curl &> /dev/null; then
@@ -85,7 +91,7 @@ _urlget() {
 }
 
 #------------------------------------------------------------------------------
-# 05) Overwrite Guard
+# 06) Overwrite Guard
 #------------------------------------------------------------------------------
 # Exits with 0 (skip) if the destination already exists and the user declines.
 # Skipped entirely when _FORCE='true'.
@@ -102,7 +108,7 @@ _confirm_overwrite() {
 }
 
 #------------------------------------------------------------------------------
-# 06) Installation Prefix
+# 07) Installation Prefix
 #------------------------------------------------------------------------------
 {% if prefix and prefix != "auto" %}
 RUN_DIRECTORY={{ prefix | escape_shell }}
@@ -130,31 +136,27 @@ RUN_DIRECTORY="$(_detect_prefix)"
 {% endif %}
 
 #------------------------------------------------------------------------------
-# 07) Rendered Asset Arrays
+# 08) Asset Arrays
 #------------------------------------------------------------------------------
-_urls=( {% for asset in assets %}
-  {{ asset.url | escape_shell }}
-{%- endfor %}
-)
 _filenames=( {% for asset in assets %}{{ asset.name | escape_shell }} {% endfor %})
 _filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% endfor %})
 _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
 
 #------------------------------------------------------------------------------
-# 08) Asset Selection
+# 09) Asset Selection
 #------------------------------------------------------------------------------
 printf "Please select one of the following:\n"
 choice="$(_ask_choices -q "${_printables[@]}")"
 
 #------------------------------------------------------------------------------
-# 09) Selection Validation
+# 10) Selection Validation
 #------------------------------------------------------------------------------
 case "$choice" in
   q|n)
     exit 0
     ;;
   [0-9]*)
-    if ! [ "$choice" -lt {% raw %}"${#_urls[@]}"{% endraw %} ]; then
+    if ! [ "$choice" -lt {% raw %}"${#_artifacts[@]}"{% endraw %} ]; then
       printf "invalid choice: %s\n" "$choice" >&2
       exit 100
     fi
@@ -166,15 +168,15 @@ case "$choice" in
 esac
 
 #------------------------------------------------------------------------------
-# 10) Download and Install Dispatch
+# 11) Download and Install Dispatch
 #------------------------------------------------------------------------------
-printf "Downloading from %s to %s\n" "${_urls[$choice]}" "$_TMPDIR"
+printf "Downloading from %s to %s\n" "${_artifacts[$choice]}" "$_TMPDIR"
 _type="${_filetypes[$choice]}"
 case "$_type" in
   "binary" | "deb installer")
     filename="${_filenames[$choice]}"
     saved_file="$_TMPDIR/$filename"
-    _urlget "${_urls[$choice]}" > "$saved_file"
+    _urlget "${_artifacts[$choice]}" > "$saved_file"
 
     if [ "$_type" = "deb installer" ]; then
       if command -v dpkg &> /dev/null; then
@@ -204,7 +206,7 @@ case "$_type" in
     fi
     ;;
   "tar.gz")
-    _urlget "${_urls[$choice]}" | tar xz
+    _urlget "${_artifacts[$choice]}" | tar xz
     executable_files=(
       $(find . -type f -executable -exec printf '{} ' \;)
     )
@@ -239,7 +241,7 @@ case "$_type" in
 esac
 {% else %}
 #------------------------------------------------------------------------------
-# 11) No Assets Available
+# 1) No Assets Available
 #------------------------------------------------------------------------------
 printf "no assets found\n" >&2
 exit 100

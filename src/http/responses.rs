@@ -8,11 +8,13 @@ const SCRIPT_PREVIEW_HTML_TEMPLATE: &str = include_str!("../../templates/script_
 const HIGHLIGHT_JS: &str = include_str!("../../static/css/highlightjs/highlight.min.js");
 const HIGHLIGHT_CSS: &str =
   include_str!("../../static/css/highlightjs/styles/stackoverflow-light.min.css");
-const PICO_CSS: &str = include_str!("../../static/css/pico.classless.purple.css");
+const PICO_CSS: &str = include_str!("../../static/css/pico.purple.css");
 const OVERRIDES_CSS: &str = include_str!("../../static/css/overrides.css");
 const PAGE_CSS: &str = include_str!("../../static/css/script-preview.css");
 const ICON_COPY_SVG: &str = include_str!("../../static/icons/copy.svg");
 const ICON_CHECK_SVG: &str = include_str!("../../static/icons/check.svg");
+const ICON_DOWNLOAD_SVG: &str = include_str!("../../static/icons/download.svg");
+const CLIPBOARD_JS: &str = include_str!("../../static/clipboard.js");
 
 /// In hot-reload mode, read `rel_path` from disk on every call (falling back
 /// to the compile-time `fallback` on error).  In production, return `fallback`
@@ -101,12 +103,14 @@ impl ScriptResponse {
     );
     let shared_css = format!(
       "{}\n{}",
-      asset("static/css/pico.classless.purple.css", PICO_CSS),
+      asset("static/css/pico.purple.css", PICO_CSS),
       asset("static/css/overrides.css", OVERRIDES_CSS),
     );
     let page_css = asset("static/css/script-preview.css", PAGE_CSS);
     let icon_copy = asset("static/icons/copy.svg", ICON_COPY_SVG);
     let icon_check = asset("static/icons/check.svg", ICON_CHECK_SVG);
+    let icon_download = asset("static/icons/download.svg", ICON_DOWNLOAD_SVG);
+    let clipboard_js = asset("static/clipboard.js", CLIPBOARD_JS);
 
     let tags_json = serde_json::to_string(&self.release_tags).unwrap_or_else(|_| "[]".to_string());
 
@@ -118,8 +122,10 @@ impl ScriptResponse {
       .replace("/*__HIGHLIGHT_CSS__*/", &highlight_css)
       .replace("/*__SHARED_CSS__*/", &shared_css)
       .replace("/*__PAGE_CSS__*/", &page_css)
+      .replace("/*__CLIPBOARD_JS__*/", &clipboard_js)
       .replace("{{icon_copy}}", icon_copy.trim())
       .replace("{{icon_check}}", icon_check.trim())
+      .replace("{{icon_download}}", icon_download.trim())
       .replace("{{release_tags_json}}", &tags_json)
       .replace("{{code}}", escaped_code.as_str())
   }

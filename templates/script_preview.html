@@ -11,12 +11,13 @@
 <body>
   <span hidden id="icon-copy">{{icon_copy}}</span>
   <span hidden id="icon-check">{{icon_check}}</span>
-  <main>
+  <span hidden id="icon-download">{{icon_download}}</span>
+  <main class="container">
     <div class="toolbar">
       <p id="script-title" class="title">{{filename}}</p>
-      <button id="copy-script" class="copy-button" type="button">{{icon_copy}} Copy script</button>
+      <button id="download-script" class="icon-btn" type="button" aria-label="Download script">{{icon_download}}</button>
     </div>
-    <div class="controls">
+    <div class="controls grid">
       <div class="ctrl-group">
         <label for="ctrl-os">os</label>
         <select id="ctrl-os">
@@ -28,7 +29,6 @@
           <option value="netbsd">netbsd</option>
         </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-arch">arch</label>
         <select id="ctrl-arch">
@@ -45,14 +45,12 @@
           <option value="riscv">riscv</option>
         </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-version">version</label>
         <select id="ctrl-version">
           <option value="latest">latest</option>
         </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-method">method</label>
         <select id="ctrl-method">
@@ -65,6 +63,7 @@
   </main>
   <script id="release-tags-data" type="application/json">{{release_tags_json}}</script>
   <script>/*__HIGHLIGHT_JS__*/</script>
+  <script>/*__CLIPBOARD_JS__*/</script>
   <script>
     // -------------------------------------------------------------------------
     // Linkify URLs inside the _urls=( ... ) array in the rendered script.
@@ -106,7 +105,6 @@
     // -------------------------------------------------------------------------
     // Elements
     // -------------------------------------------------------------------------
-    const copyButton  = document.getElementById("copy-script");
     const scriptCode  = document.getElementById("script-code");
     const scriptTitle = document.getElementById("script-title");
 
@@ -133,9 +131,6 @@
       versionSelect.value = current;
       if (!versionSelect.value && tags.length) versionSelect.value = tags[0];
     })();
-
-    const ICON_COPY  = document.getElementById("icon-copy")?.innerHTML ?? "";
-    const ICON_CHECK = document.getElementById("icon-check")?.innerHTML ?? "";
 
     /** @type {{ highlight: (c:string,o:{language:string})=>{value:string}, highlightAuto: (c:string)=>{value:string} } | undefined} */
     const hljsLib = /** @type {any} */ (window)["hljs"];
@@ -274,42 +269,45 @@
     });
 
     // -------------------------------------------------------------------------
-    // Copy button
+    // Download button
     // -------------------------------------------------------------------------
-    copyButton?.addEventListener("click", async () => {
-      // textContent strips highlight.js spans, giving back plain script text.
-      const scriptText = scriptCode?.textContent ?? "";
-      if (!scriptText) return;
+    (function () {
+      const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById("download-script"));
+      if (!btn) return;
+      const ICON_DL    = document.getElementById("icon-download")?.innerHTML ?? "";
+      const ICON_CHECK = document.getElementById("icon-check")?.innerHTML ?? "";
 
-      function markCopied() {
-        if (copyButton) {
-          copyButton.innerHTML = ICON_CHECK + " Copied!";
-          copyButton.classList.add("copied");
-        }
+      function markDownloaded() {
+        btn.innerHTML = ICON_CHECK;
+        btn.classList.add("copied");
         setTimeout(() => {
-          if (copyButton) {
-            copyButton.innerHTML = ICON_COPY + " Copy script";
-            copyButton.classList.remove("copied");
-          }
+          btn.innerHTML = ICON_DL;
+          btn.classList.remove("copied");
         }, 1500);
       }
 
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(scriptText).then(markCopied).catch(markCopied);
-      } else {
-        // Textarea fallback for older browsers / non-HTTPS contexts.
-        const ta = document.createElement("textarea");
-        ta.value = scriptText;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        try { document.execCommand("copy"); } catch (_) {}
-        document.body.removeChild(ta);
-        markCopied();
-      }
-    });
+      btn.addEventListener("click", async () => {
+        const params = new URLSearchParams(window.location.search);
+        params.set("inline", "true");
+        try {
+          const res = await fetch(`${window.location.pathname}?${params.toString()}`);
+          if (!res.ok) return;
+          const text = await res.text();
+          const filename = scriptTitle?.textContent || "install.sh";
+          const blob = new Blob([text], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          markDownloaded();
+        } catch (err) {
+          console.error("Failed to download script:", err);
+        }
+      });
+    })();
+
   </script>
 </body>
 </html>

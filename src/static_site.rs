@@ -39,7 +39,7 @@ fn comrak_options() -> Options<'static> {
 
 const HEAD: &str = concat!(
   "<head><title>getpipe.sh</title><style>",
-  include_str!("../static/css/pico.classless.purple.css"),
+  include_str!("../static/css/pico.purple.css"),
   include_str!("../static/css/overrides.css"),
   "</style></head><body>"
 );
@@ -52,7 +52,7 @@ fn wrap_body(html: &str) -> String {
   #[cfg(feature = "hot-reload")]
   let head_str = format!(
     "<head><title>getpipe.sh</title><style>{}{}</style></head><body>",
-    crate::hot_reload::read("static/css/pico.classless.purple.css", ""),
+    crate::hot_reload::read("static/css/pico.purple.css", ""),
     crate::hot_reload::read("static/css/overrides.css", ""),
   );
 
@@ -73,7 +73,7 @@ fn wrap_body(html: &str) -> String {
   );
 
   format!(
-    "{}<span hidden id=\"icon-copy\">{}</span><span hidden id=\"icon-check\">{}</span><main>{}</main><script>{}</script></body>",
+    "{}<span hidden id=\"icon-copy\">{}</span><span hidden id=\"icon-check\">{}</span><main class=\"container\">{}</main><script>{}</script></body>",
     head_str,
     copy_svg.trim(),
     check_svg.trim(),
