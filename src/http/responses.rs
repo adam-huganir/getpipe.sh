@@ -5,8 +5,31 @@ use tera::escape_html;
 use utoipa::ToSchema;
 
 const SCRIPT_PREVIEW_HTML_TEMPLATE: &str = include_str!("../../templates/script_preview.html");
-const HIGHLIGHT_JS: &str = include_str!("../../templates/vendor/highlightjs/highlight.min.js");
-const HIGHLIGHT_CSS: &str = include_str!("../../templates/vendor/highlightjs/github-dark.min.css");
+const HIGHLIGHT_JS: &str = include_str!("../../static/css/highlightjs/highlight.min.js");
+const HIGHLIGHT_CSS: &str =
+  include_str!("../../static/css/highlightjs/styles/stackoverflow-dark.min.css");
+const PICO_CSS: &str = include_str!("../../static/css/pico.purple.css");
+const OVERRIDES_CSS: &str = include_str!("../../static/css/overrides.css");
+const PAGE_CSS: &str = include_str!("../../static/css/script-preview.css");
+const ICON_COPY_SVG: &str = include_str!("../../static/icons/copy.svg");
+const ICON_CHECK_SVG: &str = include_str!("../../static/icons/check.svg");
+const ICON_DOWNLOAD_SVG: &str = include_str!("../../static/icons/download.svg");
+const CLIPBOARD_JS: &str = include_str!("../../static/clipboard.js");
+
+/// In hot-reload mode, read `rel_path` from disk on every call (falling back
+/// to the compile-time `fallback` on error).  In production, return `fallback`
+/// directly — all assets are already embedded at compile time.
+fn asset(rel_path: &str, fallback: &str) -> String {
+  #[cfg(feature = "hot-reload")]
+  {
+    crate::hot_reload::read(rel_path, fallback)
+  }
+  #[cfg(not(feature = "hot-reload"))]
+  {
+    let _ = rel_path;
+    fallback.to_string()
+  }
+}
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub(crate) struct ScriptResponse {
@@ -20,6 +43,8 @@ pub(crate) struct ScriptResponse {
   #[serde(skip)]
   body: String,
   body_size: usize,
+  #[serde(skip)]
+  release_tags: Vec<String>,
 }
 
 fn sanitize_filename(name: &str) -> String {
@@ -53,7 +78,13 @@ impl ScriptResponse {
       shell_name,
       inline,
       html,
+      release_tags: vec![],
     }
+  }
+
+  pub(crate) fn with_tags(mut self, tags: Vec<String>) -> Self {
+    self.release_tags = tags;
+    self
   }
 
   fn as_html_document(&self) -> String {
@@ -63,12 +94,42 @@ impl ScriptResponse {
     };
     let escaped_code = escape_html(self.body.as_str());
     let escaped_filename = escape_html(self.filename.as_str());
-    SCRIPT_PREVIEW_HTML_TEMPLATE
+
+    let template = asset(
+      "templates/script_preview.html",
+      SCRIPT_PREVIEW_HTML_TEMPLATE,
+    );
+    let highlight_js = asset("static/css/highlightjs/highlight.min.js", HIGHLIGHT_JS);
+    let highlight_css = asset(
+      "static/css/highlightjs/styles/stackoverflow-dark.min.css",
+      HIGHLIGHT_CSS,
+    );
+    let shared_css = format!(
+      "{}\n{}",
+      asset("static/css/pico.purple.css", PICO_CSS),
+      asset("static/css/overrides.css", OVERRIDES_CSS),
+    );
+    let page_css = asset("static/css/script-preview.css", PAGE_CSS);
+    let icon_copy = asset("static/icons/copy.svg", ICON_COPY_SVG);
+    let icon_check = asset("static/icons/check.svg", ICON_CHECK_SVG);
+    let icon_download = asset("static/icons/download.svg", ICON_DOWNLOAD_SVG);
+    let clipboard_js = asset("static/clipboard.js", CLIPBOARD_JS);
+
+    let tags_json = serde_json::to_string(&self.release_tags).unwrap_or_else(|_| "[]".to_string());
+
+    template
       .replace("{{title}}", escaped_filename.as_str())
       .replace("{{filename}}", escaped_filename.as_str())
       .replace("{{language}}", language)
-      .replace("/*__HIGHLIGHT_JS__*/", HIGHLIGHT_JS)
-      .replace("/*__HIGHLIGHT_CSS__*/", HIGHLIGHT_CSS)
+      .replace("/*__HIGHLIGHT_JS__*/", &highlight_js)
+      .replace("/*__HIGHLIGHT_CSS__*/", &highlight_css)
+      .replace("/*__SHARED_CSS__*/", &shared_css)
+      .replace("/*__PAGE_CSS__*/", &page_css)
+      .replace("/*__CLIPBOARD_JS__*/", &clipboard_js)
+      .replace("{{icon_copy}}", icon_copy.trim())
+      .replace("{{icon_check}}", icon_check.trim())
+      .replace("{{icon_download}}", icon_download.trim())
+      .replace("{{release_tags_json}}", &tags_json)
       .replace("{{code}}", escaped_code.as_str())
   }
 
@@ -175,6 +236,6 @@ mod tests {
     let body = String::from_utf8(bytes.to_vec()).unwrap();
     assert!(body.contains("<pre><code id=\"script-code\" class=\"language-powershell\">"));
     assert!(body.contains("&lt;unsafe&gt;"));
-    assert!(body.contains("width: min(98vw, 1800px);"));
+    assert!(body.contains("id=\"download-script\""));
   }
 }

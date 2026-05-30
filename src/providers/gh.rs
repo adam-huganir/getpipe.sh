@@ -13,8 +13,17 @@ const MIN_ASSET_SIZE: u64 = 64 * 1024; // arbitrary, may need to change if we st
 
 // Cache key: (owner, repo, version)
 type CacheKey = (String, String, String);
+type TagsCacheKey = (String, String);
 
 static RELEASE_CACHE: LazyLock<Cache<CacheKey, Release>> = LazyLock::new(|| {
+  let cache_config = &CONFIG.cache.github_releases;
+  Cache::builder()
+    .max_capacity(cache_config.max_capacity)
+    .time_to_live(Duration::from_secs(cache_config.ttl_seconds))
+    .build()
+});
+
+static TAGS_CACHE: LazyLock<Cache<TagsCacheKey, Vec<String>>> = LazyLock::new(|| {
   let cache_config = &CONFIG.cache.github_releases;
   Cache::builder()
     .max_capacity(cache_config.max_capacity)
@@ -141,6 +150,46 @@ pub(crate) async fn get_github_download_links(
     }
   }
   Ok(matched)
+}
+
+pub(crate) async fn get_github_release_tags(
+  repo: &Repo,
+  limit: u8,
+) -> Result<Vec<String>, AppError> {
+  let repo_string = repo.get_github_repo()?;
+  let (owner, repo_name) = repo_string
+    .split_once('/')
+    .ok_or_else(|| AppError::InvalidInput(format!("Invalid github repo path: {}", repo_string)))?;
+
+  let cache_key = (owner.to_string(), repo_name.to_string());
+
+  if let Some(cached) = TAGS_CACHE.get(&cache_key).await {
+    debug!("tags cache hit for {}/{}", owner, repo_name);
+    return Ok(cached);
+  }
+
+  debug!("tags cache miss for {}/{}", owner, repo_name);
+  let timeout_secs = CONFIG.github.api_timeout_seconds;
+  let page = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+    OCTOCRAB
+      .repos(owner, repo_name)
+      .releases()
+      .list()
+      .per_page(limit)
+      .send()
+      .await
+  })
+  .await
+  .map_err(|_| {
+    AppError::UpstreamGithub(format!(
+      "GitHub API request timed out after {} seconds",
+      timeout_secs
+    ))
+  })??;
+
+  let tags: Vec<String> = page.items.into_iter().map(|r| r.tag_name).collect();
+  TAGS_CACHE.insert(cache_key, tags.clone()).await;
+  Ok(tags)
 }
 
 fn calc_all_widths(download_infos: &[DownloadInfo]) -> (usize, usize, usize, usize, usize) {

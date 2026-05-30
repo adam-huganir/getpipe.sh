@@ -5,122 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{title}}</title>
   <style>/*__HIGHLIGHT_CSS__*/</style>
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0;
-      padding: 24px;
-      background: #0b0f17;
-      color: #e6edf3;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
-    .container {
-      width: min(98vw, 1800px);
-      margin: 0 auto;
-    }
-    .title {
-      margin: 0;
-      font-size: 14px;
-      color: #9fb3c8;
-    }
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      gap: 12px;
-    }
-    /* Parameter controls bar */
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-    .ctrl-group {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 12px;
-      color: #7a8fa6;
-    }
-    .ctrl-group label {
-      user-select: none;
-    }
-    .ctrl-group select,
-    .ctrl-group input[type="text"] {
-      background: #111827;
-      color: #e6edf3;
-      border: 1px solid #2f3a4f;
-      border-radius: 6px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-family: inherit;
-      cursor: pointer;
-      transition: border-color 0.12s;
-    }
-    .ctrl-group input[type="text"] {
-      width: 72px;
-      cursor: text;
-    }
-    .ctrl-group select:hover,
-    .ctrl-group input[type="text"]:hover {
-      border-color: #4a6080;
-    }
-    .ctrl-group select:focus,
-    .ctrl-group input[type="text"]:focus {
-      outline: none;
-      border-color: #7cc7ff;
-    }
-    .ctrl-sep {
-      width: 1px;
-      height: 14px;
-      background: #2f3a4f;
-      margin: 0 2px;
-      flex-shrink: 0;
-    }
-    .copy-button {
-      border: 1px solid #2f3a4f;
-      background: #111827;
-      color: #e6edf3;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .copy-button:hover {
-      background: #172033;
-    }
-    .code-link {
-      color: #7cc7ff;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    pre {
-      margin: 0;
-      padding: 18px 20px;
-      border-radius: 10px;
-      overflow-x: auto;
-      border: 1px solid #263041;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    code {
-      font-size: 14px;
-      line-height: 1.55;
-      tab-size: 2;
-      white-space: pre;
-    }
-  </style>
+  <style>/*__SHARED_CSS__*/</style>
+  <style>/*__PAGE_CSS__*/</style>
 </head>
 <body>
-  <div class="container">
+  <span hidden id="icon-copy">{{icon_copy}}</span>
+  <span hidden id="icon-check">{{icon_check}}</span>
+  <span hidden id="icon-download">{{icon_download}}</span>
+  <main class="container">
     <div class="toolbar">
       <p id="script-title" class="title">{{filename}}</p>
-      <button id="copy-script" class="copy-button" type="button">Copy script</button>
+      <button id="download-script" class="icon-btn" type="button" aria-label="Download script">{{icon_download}}</button>
     </div>
-    <div class="controls">
+    <div class="controls grid">
       <div class="ctrl-group">
         <label for="ctrl-os">os</label>
         <select id="ctrl-os">
@@ -132,7 +29,6 @@
           <option value="netbsd">netbsd</option>
         </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-arch">arch</label>
         <select id="ctrl-arch">
@@ -149,12 +45,12 @@
           <option value="riscv">riscv</option>
         </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-version">version</label>
-        <input id="ctrl-version" type="text" placeholder="latest" />
+        <select id="ctrl-version">
+          <option value="latest">latest</option>
+        </select>
       </div>
-      <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-method">method</label>
         <select id="ctrl-method">
@@ -164,8 +60,10 @@
       </div>
     </div>
     <pre><code id="script-code" class="language-{{language}}">{{code}}</code></pre>
-  </div>
+  </main>
+  <script id="release-tags-data" type="application/json">{{release_tags_json}}</script>
   <script>/*__HIGHLIGHT_JS__*/</script>
+  <script>/*__CLIPBOARD_JS__*/</script>
   <script>
     // -------------------------------------------------------------------------
     // Linkify URLs inside the _urls=( ... ) array in the rendered script.
@@ -207,9 +105,32 @@
     // -------------------------------------------------------------------------
     // Elements
     // -------------------------------------------------------------------------
-    const copyButton  = document.getElementById("copy-script");
     const scriptCode  = document.getElementById("script-code");
     const scriptTitle = document.getElementById("script-title");
+
+    // Populate the version select from the server-embedded release tags.
+    (function populateVersionSelect() {
+      const dataEl = document.getElementById("release-tags-data");
+      if (!dataEl) return;
+      /** @type {string[]} */
+      const tags = JSON.parse(dataEl.textContent ?? "[]");
+      if (!tags.length) return;
+      const versionSelect = /** @type {HTMLSelectElement|null} */ (
+        document.getElementById("ctrl-version")
+      );
+      if (!versionSelect) return;
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get("version") ?? "latest";
+      versionSelect.innerHTML = "";
+      for (const tag of tags) {
+        const opt = document.createElement("option");
+        opt.value = tag;
+        opt.textContent = tag;
+        versionSelect.appendChild(opt);
+      }
+      versionSelect.value = current;
+      if (!versionSelect.value && tags.length) versionSelect.value = tags[0];
+    })();
 
     /** @type {{ highlight: (c:string,o:{language:string})=>{value:string}, highlightAuto: (c:string)=>{value:string} } | undefined} */
     const hljsLib = /** @type {any} */ (window)["hljs"];
@@ -264,7 +185,7 @@
       // Ensure the version field shows "latest" when the param is absent.
       const versionEl = document.getElementById("ctrl-version");
       if (versionEl && !params.has("version")) {
-        /** @type {HTMLInputElement} */ (versionEl).value = "latest";
+        /** @type {HTMLSelectElement} */ (versionEl).value = "latest";
       }
     }
 
@@ -338,16 +259,6 @@
       el.addEventListener("change", () => reloadScript());
     }
 
-    const versionInput = /** @type {HTMLInputElement|null} */ (
-      document.getElementById("ctrl-version")
-    );
-    if (versionInput) {
-      versionInput.addEventListener("blur", () => reloadScript());
-      versionInput.addEventListener("keydown", (e) => {
-        if (/** @type {KeyboardEvent} */ (e).key === "Enter") versionInput.blur();
-      });
-    }
-
     // -------------------------------------------------------------------------
     // Browser back / forward — re-sync controls and re-render
     // -------------------------------------------------------------------------
@@ -358,21 +269,45 @@
     });
 
     // -------------------------------------------------------------------------
-    // Copy button
+    // Download button
     // -------------------------------------------------------------------------
-    copyButton?.addEventListener("click", async () => {
-      // textContent strips highlight.js spans, giving back plain script text.
-      const scriptText = scriptCode?.textContent ?? "";
-      if (!scriptText) return;
-      try {
-        await navigator.clipboard.writeText(scriptText);
-        copyButton.textContent = "Copied!";
-        setTimeout(() => { copyButton.textContent = "Copy script"; }, 1500);
-      } catch {
-        copyButton.textContent = "Copy failed";
-        setTimeout(() => { copyButton.textContent = "Copy script"; }, 1500);
+    (function () {
+      const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById("download-script"));
+      if (!btn) return;
+      const ICON_DL    = document.getElementById("icon-download")?.innerHTML ?? "";
+      const ICON_CHECK = document.getElementById("icon-check")?.innerHTML ?? "";
+
+      function markDownloaded() {
+        btn.innerHTML = ICON_CHECK;
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.innerHTML = ICON_DL;
+          btn.classList.remove("copied");
+        }, 1500);
       }
-    });
+
+      btn.addEventListener("click", async () => {
+        const params = new URLSearchParams(window.location.search);
+        params.set("inline", "true");
+        try {
+          const res = await fetch(`${window.location.pathname}?${params.toString()}`);
+          if (!res.ok) return;
+          const text = await res.text();
+          const filename = scriptTitle?.textContent || "install.sh";
+          const blob = new Blob([text], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          markDownloaded();
+        } catch (err) {
+          console.error("Failed to download script:", err);
+        }
+      });
+    })();
+
   </script>
 </body>
 </html>

@@ -18,6 +18,8 @@ mod cli;
 mod config;
 mod domain;
 mod error;
+#[cfg(feature = "hot-reload")]
+mod hot_reload;
 mod http;
 mod providers;
 mod services;
@@ -31,20 +33,15 @@ use crate::error::AppError;
 use crate::http::query::{InstallMethod, InstallQueryOptions};
 use crate::http::responses::ScriptResponse;
 use crate::services::installer;
-use crate::templates::TEMPLATES;
 use clap_complete::generate;
 use log::{debug, info, warn};
 use std::env;
 use std::io::{self, Write};
-use std::path::PathBuf;
-use std::sync::LazyLock;
 use std::time::Instant;
 
 const LOG_REQUESTS_SKIP_PATHS: [&str; 1] = ["/favicon.ico"];
 const LATEST_API_PREFIX: &str = "/v1";
 const FAVICON: &[u8] = include_bytes!("../favicon.ico");
-static GETPIPE_ROOT: LazyLock<PathBuf> =
-  LazyLock::new(|| PathBuf::from(env::var("GETPIPE_ROOT").unwrap_or("../".into())));
 
 fn setup_logger(log_level: &str) -> Result<(), fern::InitError> {
   let log_level = log_level.to_uppercase();
@@ -151,9 +148,41 @@ fn accepts_html(headers: &HeaderMap) -> bool {
     .unwrap_or(false)
 }
 
+async fn install_help_handler(headers: HeaderMap) -> Result<impl IntoResponse, AppError> {
+  let apps: Vec<serde_json::Value> = supported_apps::list_apps()
+    .into_iter()
+    .filter_map(|(name, app)| {
+      app.repo.get_github_repo().ok().map(|repo| {
+        let github_url = format!("https://github.com/{}", repo);
+        serde_json::json!({
+          "name": name,
+          "repo": repo,
+          "github_url": github_url,
+        })
+      })
+    })
+    .collect();
+
+  let mut context = tera::Context::new();
+  context.insert("apps", &apps);
+  let md = templates::render("install-help.md", &context)?;
+
+  if accepts_html(&headers) {
+    Ok(Html(static_site::render_markdown_to_html(&md)).into_response())
+  } else {
+    Ok(
+      (
+        StatusCode::OK,
+        [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+        md,
+      )
+        .into_response(),
+    )
+  }
+}
+
 async fn root_handler() -> Result<Html<String>, AppError> {
-  info!("{:?}", "root");
-  info!("{:?}", GETPIPE_ROOT);
+  debug!("{:?}", "root handler()");
   let html = static_site::load_static("index.html")
     .ok_or_else(|| AppError::InvalidInput("index.html not found".to_string()))?;
   Ok(Html(html))
@@ -233,7 +262,7 @@ async fn run_server(serve_args: Option<&cli::ServeArgs>) -> anyhow::Result<()> {
   setup_logger(log_level.as_str()).context("failed to initialize logger")?;
 
   // make sure the templates are loaded early to check for errors
-  TEMPLATES.get_template_names().for_each(|name| {
+  templates::names().into_iter().for_each(|name| {
     info!("template loaded: {}", name);
   });
 
@@ -366,6 +395,7 @@ fn build_cors_layer() -> anyhow::Result<CorsLayer> {
 fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
   let cors = build_cors_layer()?;
   let v1_router = Router::new()
+    .route("/install", get(install_help_handler))
     .route(
       "/install/{user}/{repo}",
       get(install_arbitrary_github_handler),
@@ -398,6 +428,15 @@ mod tests {
   use axum_test::TestServer;
 
   async fn test_server() -> TestServer {
+    // In hot-reload mode, static files and templates are read from disk.
+    // GETPIPE_ROOT must point to the package root so paths like
+    // "static/404.md" resolve correctly.  cargo test runs from the package
+    // root, so "." is always correct here.
+    // SAFETY: value is constant and tests run with --test-threads=1.
+    #[cfg(feature = "hot-reload")]
+    unsafe {
+      std::env::set_var("GETPIPE_ROOT", ".")
+    };
     let app = build_app(false).unwrap();
     TestServer::new(app)
   }

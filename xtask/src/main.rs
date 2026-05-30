@@ -76,10 +76,10 @@ fn build() -> Result<()> {
 }
 
 fn dev() -> Result<()> {
-  println!("🚀 Starting development server...");
+  println!("🚀 Starting development server (hot-reload enabled)...");
   run_command_with_env(
     "cargo",
-    &["run"],
+    &["run", "--features", "hot-reload"],
     &[("LOG_LEVEL", "debug"), ("LOG_REQUESTS", "true")],
   )?;
   Ok(())
