@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 const SCRIPT_PREVIEW_HTML_TEMPLATE: &str = include_str!("../../templates/script_preview.html");
 const HIGHLIGHT_JS: &str = include_str!("../../static/css/highlightjs/highlight.min.js");
 const HIGHLIGHT_CSS: &str =
-  include_str!("../../static/css/highlightjs/styles/stackoverflow-light.min.css");
+  include_str!("../../static/css/highlightjs/styles/stackoverflow-dark.min.css");
 const PICO_CSS: &str = include_str!("../../static/css/pico.purple.css");
 const OVERRIDES_CSS: &str = include_str!("../../static/css/overrides.css");
 const PAGE_CSS: &str = include_str!("../../static/css/script-preview.css");
@@ -95,10 +95,13 @@ impl ScriptResponse {
     let escaped_code = escape_html(self.body.as_str());
     let escaped_filename = escape_html(self.filename.as_str());
 
-    let template = asset("templates/script_preview.html", SCRIPT_PREVIEW_HTML_TEMPLATE);
+    let template = asset(
+      "templates/script_preview.html",
+      SCRIPT_PREVIEW_HTML_TEMPLATE,
+    );
     let highlight_js = asset("static/css/highlightjs/highlight.min.js", HIGHLIGHT_JS);
     let highlight_css = asset(
-      "static/css/highlightjs/styles/stackoverflow-light.min.css",
+      "static/css/highlightjs/styles/stackoverflow-dark.min.css",
       HIGHLIGHT_CSS,
     );
     let shared_css = format!(
@@ -233,6 +236,6 @@ mod tests {
     let body = String::from_utf8(bytes.to_vec()).unwrap();
     assert!(body.contains("<pre><code id=\"script-code\" class=\"language-powershell\">"));
     assert!(body.contains("&lt;unsafe&gt;"));
-    assert!(body.contains("width: min(98vw, 1800px);"));
+    assert!(body.contains("id=\"download-script\""));
   }
 }

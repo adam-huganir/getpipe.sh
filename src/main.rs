@@ -1,14 +1,14 @@
 use anyhow::Context;
 use axum::{
+  Router,
   extract::{DefaultBodyLimit, Path, Query, Request},
   http::{
-    header::{ACCEPT, CONTENT_TYPE}, HeaderMap, HeaderValue, Method, StatusCode,
-    Uri,
+    HeaderMap, HeaderValue, Method, StatusCode, Uri,
+    header::{ACCEPT, CONTENT_TYPE},
   },
   middleware::{self, Next},
   response::{Html, IntoResponse, Redirect},
   routing::get,
-  Router,
 };
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
@@ -170,12 +170,14 @@ async fn install_help_handler(headers: HeaderMap) -> Result<impl IntoResponse, A
   if accepts_html(&headers) {
     Ok(Html(static_site::render_markdown_to_html(&md)).into_response())
   } else {
-    Ok((
-      StatusCode::OK,
-      [(CONTENT_TYPE, "text/plain; charset=utf-8")],
-      md,
+    Ok(
+      (
+        StatusCode::OK,
+        [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+        md,
+      )
+        .into_response(),
     )
-      .into_response())
   }
 }
 

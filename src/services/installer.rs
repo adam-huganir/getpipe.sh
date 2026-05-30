@@ -98,12 +98,8 @@ pub(crate) async fn build_arbitrary_github_install_script(
   let (target, links) = load_app(query, &target_app).await?;
   let (script, extension) = templating::render_install_script(query, &links, &target.os)?;
 
-  let mut response = ScriptResponse::new(
-    format!("install.{}", extension),
-    script,
-    query.inline,
-    html,
-  );
+  let mut response =
+    ScriptResponse::new(format!("install.{}", extension), script, query.inline, html);
 
   if html {
     let mut tags = get_github_release_tags(&target_app.repo, 20)

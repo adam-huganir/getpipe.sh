@@ -15,7 +15,6 @@ const TEMPLATE_FILES: [(&str, &str); 3] = [
   ("install-help.md", "templates/install-help.md"),
 ];
 
-
 // ---------------------------------------------------------------------------
 // Build a Tera engine with all filters registered.
 // The templates themselves are loaded by the caller.
@@ -64,7 +63,11 @@ static TEMPLATES: LazyLock<std::sync::Mutex<Tera>> = LazyLock::new(|| {
     let path = root.join(rel_path);
     match std::fs::read_to_string(&path) {
       Ok(content) => {
-        info!("hot-reload: loading template {} from {}", name, path.display());
+        info!(
+          "hot-reload: loading template {} from {}",
+          name,
+          path.display()
+        );
         if let Err(e) = tera.add_raw_template(name, &content) {
           log::warn!("hot-reload: failed to parse template {}: {}", name, e);
         }
@@ -109,11 +112,7 @@ pub(crate) fn render(name: &str, context: &tera::Context) -> Result<String, tera
           }
         }
         Err(e) => {
-          log::warn!(
-            "hot-reload: failed to read {}: {}",
-            path.display(),
-            e
-          );
+          log::warn!("hot-reload: failed to read {}: {}", path.display(), e);
         }
       }
     }
@@ -266,8 +265,7 @@ mod hot_reload_tests {
     // Stub the other two templates that render() re-reads on every call.
     std::fs::write(templates_dir.join("install.sh"), "#!/bin/bash\n")
       .expect("write install.sh stub");
-    std::fs::write(templates_dir.join("install.ps1"), "# stub\n")
-      .expect("write install.ps1 stub");
+    std::fs::write(templates_dir.join("install.ps1"), "# stub\n").expect("write install.ps1 stub");
 
     // Use a simple template with no variables so no context setup is needed.
     let help_path = templates_dir.join("install-help.md");

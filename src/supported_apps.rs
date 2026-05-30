@@ -138,8 +138,9 @@ impl Repo {
 
   fn get_url(&self) -> Result<Url, AppError> {
     match self {
-      Repo::Github(repo) => Url::parse(repo)
-        .map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err))),
+      Repo::Github(repo) => {
+        Url::parse(repo).map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
+      }
       Repo::Url(url) => {
         Url::parse(url).map_err(|err| AppError::InvalidInput(format!("Invalid URL: {}", err)))
       }

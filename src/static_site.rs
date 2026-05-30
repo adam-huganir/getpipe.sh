@@ -24,7 +24,6 @@ const STATIC_FILE_MAPPING: [(&str, &str, &str); 2] = [
   ),
 ];
 
-
 fn comrak_options() -> Options<'static> {
   let mut opts = Options::default();
   opts.extension.table = true;
@@ -41,25 +40,38 @@ const HEAD: &str = concat!(
   "<head><title>getpipe.sh</title><style>",
   include_str!("../static/css/pico.purple.css"),
   include_str!("../static/css/overrides.css"),
+  "</style><style>",
+  include_str!("../static/css/highlightjs/styles/stackoverflow-dark.min.css"),
   "</style></head><body>"
 );
 
 const CLIPBOARD_JS: &str = include_str!("../static/clipboard.js");
+const HIGHLIGHT_JS: &str = include_str!("../static/css/highlightjs/highlight.min.js");
 
 fn wrap_body(html: &str) -> String {
   #[cfg(not(feature = "hot-reload"))]
   let head_str: &str = HEAD;
   #[cfg(feature = "hot-reload")]
   let head_str = format!(
-    "<head><title>getpipe.sh</title><style>{}{}</style></head><body>",
+    "<head><title>getpipe.sh</title><style>{}{}</style><style>{}</style></head><body>",
     crate::hot_reload::read("static/css/pico.purple.css", ""),
     crate::hot_reload::read("static/css/overrides.css", ""),
+    crate::hot_reload::read(
+      "static/css/highlightjs/styles/stackoverflow-dark.min.css",
+      "",
+    ),
   );
 
   #[cfg(not(feature = "hot-reload"))]
   let clipboard_js: &str = CLIPBOARD_JS;
   #[cfg(feature = "hot-reload")]
   let clipboard_js = crate::hot_reload::read("static/clipboard.js", CLIPBOARD_JS);
+
+  #[cfg(not(feature = "hot-reload"))]
+  let highlight_js: &str = HIGHLIGHT_JS;
+  #[cfg(feature = "hot-reload")]
+  let highlight_js =
+    crate::hot_reload::read("static/css/highlightjs/highlight.min.js", HIGHLIGHT_JS);
 
   #[cfg(not(feature = "hot-reload"))]
   let (copy_svg, check_svg): (&str, &str) = (
@@ -73,11 +85,12 @@ fn wrap_body(html: &str) -> String {
   );
 
   format!(
-    "{}<span hidden id=\"icon-copy\">{}</span><span hidden id=\"icon-check\">{}</span><main class=\"container\">{}</main><script>{}</script></body>",
+    "{}<span hidden id=\"icon-copy\">{}</span><span hidden id=\"icon-check\">{}</span><main class=\"container\">{}</main><script>{}\nhljs.highlightAll();</script><script>{}</script></body>",
     head_str,
     copy_svg.trim(),
     check_svg.trim(),
     html,
+    highlight_js,
     clipboard_js,
   )
 }
@@ -124,4 +137,3 @@ pub(crate) fn load_static(key: &str) -> Option<String> {
 pub(crate) fn render_markdown_to_html(md: &str) -> String {
   render_md(md)
 }
-

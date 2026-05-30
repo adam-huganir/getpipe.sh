@@ -1,4 +1,7 @@
-/* Minimal overrides on top of Pico classless. */
+/* Minimal overrides on top of Pico. */
+
+/* Use Pico's code background instead of the highlight.js theme default. */
+.hljs { background: var(--pico-code-background-color) !important; }
 
 /* copy-btn needs a relative parent to anchor its absolute position. */
 pre { position: relative; }
