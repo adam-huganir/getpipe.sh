@@ -55,6 +55,55 @@ hr { display: block; height: 2px; border: 0; border-top: 1px solid #aaa;border-b
 pre, code, kbd, samp { color: #000; font-family: monospace, monospace; _font-family: 'courier new', monospace; font-size: 0.98em; }
 pre { white-space: pre; white-space: pre-wrap; word-wrap: break-word; }
 
+pre {
+  background: #f4f4f4;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  position: relative;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 0.4em;
+  right: 0.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2em;
+  line-height: 1;
+  color: #888;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+pre:hover .copy-btn { opacity: 0.7; }
+.copy-btn:hover {
+  opacity: 1;
+  color: #333;
+  background: #e8e8e8;
+  border-color: #ccc;
+}
+.copy-btn.copied {
+  opacity: 1;
+  color: #155724;
+  background: #d4edda;
+  border-color: #c3e6cb;
+}
+
+/* Inline code — distinct from prose but lighter than pre blocks */
+:not(pre) > code {
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
 b, strong { font-weight: bold; }
 
 dfn { font-style: italic; }
@@ -74,12 +123,23 @@ dd { margin: 0 0 0 2em; }
 img { border: 0; -ms-interpolation-mode: bicubic; vertical-align: middle; }
 
 table {
-border-collapse: collapse;
-border-spacing: 0;
-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: auto;
+  margin: 1em 0;
 }
-th { border-bottom: 1px solid black; }
-td { vertical-align: top; }
+th {
+  text-align: left;
+  padding: 0.4em 0.8em;
+  border-bottom: 2px solid #aaa;
+  background: #f4f4f4;
+}
+td {
+  vertical-align: top;
+  padding: 0.35em 0.8em;
+  border-bottom: 1px solid #e8e8e8;
+}
+tr:last-child td { border-bottom: none; }
 
 @media only screen and (min-width: 480px) {
 body{font-size:14px;}

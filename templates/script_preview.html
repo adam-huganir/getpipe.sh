@@ -5,120 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{title}}</title>
   <style>/*__HIGHLIGHT_CSS__*/</style>
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0;
-      padding: 24px;
-      background: #0b0f17;
-      color: #e6edf3;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
-    .container {
-      width: min(98vw, 1800px);
-      margin: 0 auto;
-    }
-    .title {
-      margin: 0;
-      font-size: 14px;
-      color: #9fb3c8;
-    }
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      gap: 12px;
-    }
-    /* Parameter controls bar */
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-    .ctrl-group {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 12px;
-      color: #7a8fa6;
-    }
-    .ctrl-group label {
-      user-select: none;
-    }
-    .ctrl-group select,
-    .ctrl-group input[type="text"] {
-      background: #111827;
-      color: #e6edf3;
-      border: 1px solid #2f3a4f;
-      border-radius: 6px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-family: inherit;
-      cursor: pointer;
-      transition: border-color 0.12s;
-    }
-    .ctrl-group input[type="text"] {
-      width: 72px;
-      cursor: text;
-    }
-    .ctrl-group select:hover,
-    .ctrl-group input[type="text"]:hover {
-      border-color: #4a6080;
-    }
-    .ctrl-group select:focus,
-    .ctrl-group input[type="text"]:focus {
-      outline: none;
-      border-color: #7cc7ff;
-    }
-    .ctrl-sep {
-      width: 1px;
-      height: 14px;
-      background: #2f3a4f;
-      margin: 0 2px;
-      flex-shrink: 0;
-    }
-    .copy-button {
-      border: 1px solid #2f3a4f;
-      background: #111827;
-      color: #e6edf3;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .copy-button:hover {
-      background: #172033;
-    }
-    .code-link {
-      color: #7cc7ff;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    pre {
-      margin: 0;
-      padding: 18px 20px;
-      border-radius: 10px;
-      overflow-x: auto;
-      border: 1px solid #263041;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    code {
-      font-size: 14px;
-      line-height: 1.55;
-      tab-size: 2;
-      white-space: pre;
-    }
-  </style>
+  <style>/*__SHARED_CSS__*/</style>
+  <style>/*__PAGE_CSS__*/</style>
 </head>
 <body>
-  <div class="container">
+  <span hidden id="icon-copy">{{icon_copy}}</span>
+  <span hidden id="icon-check">{{icon_check}}</span>
+  <main>
     <div class="toolbar">
       <p id="script-title" class="title">{{filename}}</p>
-      <button id="copy-script" class="copy-button" type="button">Copy script</button>
+      <button id="copy-script" class="copy-button" type="button">{{icon_copy}} Copy script</button>
     </div>
     <div class="controls">
       <div class="ctrl-group">
@@ -152,7 +48,9 @@
       <div class="ctrl-sep"></div>
       <div class="ctrl-group">
         <label for="ctrl-version">version</label>
-        <input id="ctrl-version" type="text" placeholder="latest" />
+        <select id="ctrl-version">
+          <option value="latest">latest</option>
+        </select>
       </div>
       <div class="ctrl-sep"></div>
       <div class="ctrl-group">
@@ -164,7 +62,8 @@
       </div>
     </div>
     <pre><code id="script-code" class="language-{{language}}">{{code}}</code></pre>
-  </div>
+  </main>
+  <script id="release-tags-data" type="application/json">{{release_tags_json}}</script>
   <script>/*__HIGHLIGHT_JS__*/</script>
   <script>
     // -------------------------------------------------------------------------
@@ -210,6 +109,33 @@
     const copyButton  = document.getElementById("copy-script");
     const scriptCode  = document.getElementById("script-code");
     const scriptTitle = document.getElementById("script-title");
+
+    // Populate the version select from the server-embedded release tags.
+    (function populateVersionSelect() {
+      const dataEl = document.getElementById("release-tags-data");
+      if (!dataEl) return;
+      /** @type {string[]} */
+      const tags = JSON.parse(dataEl.textContent ?? "[]");
+      if (!tags.length) return;
+      const versionSelect = /** @type {HTMLSelectElement|null} */ (
+        document.getElementById("ctrl-version")
+      );
+      if (!versionSelect) return;
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get("version") ?? "latest";
+      versionSelect.innerHTML = "";
+      for (const tag of tags) {
+        const opt = document.createElement("option");
+        opt.value = tag;
+        opt.textContent = tag;
+        versionSelect.appendChild(opt);
+      }
+      versionSelect.value = current;
+      if (!versionSelect.value && tags.length) versionSelect.value = tags[0];
+    })();
+
+    const ICON_COPY  = document.getElementById("icon-copy")?.innerHTML ?? "";
+    const ICON_CHECK = document.getElementById("icon-check")?.innerHTML ?? "";
 
     /** @type {{ highlight: (c:string,o:{language:string})=>{value:string}, highlightAuto: (c:string)=>{value:string} } | undefined} */
     const hljsLib = /** @type {any} */ (window)["hljs"];
@@ -264,7 +190,7 @@
       // Ensure the version field shows "latest" when the param is absent.
       const versionEl = document.getElementById("ctrl-version");
       if (versionEl && !params.has("version")) {
-        /** @type {HTMLInputElement} */ (versionEl).value = "latest";
+        /** @type {HTMLSelectElement} */ (versionEl).value = "latest";
       }
     }
 
@@ -338,16 +264,6 @@
       el.addEventListener("change", () => reloadScript());
     }
 
-    const versionInput = /** @type {HTMLInputElement|null} */ (
-      document.getElementById("ctrl-version")
-    );
-    if (versionInput) {
-      versionInput.addEventListener("blur", () => reloadScript());
-      versionInput.addEventListener("keydown", (e) => {
-        if (/** @type {KeyboardEvent} */ (e).key === "Enter") versionInput.blur();
-      });
-    }
-
     // -------------------------------------------------------------------------
     // Browser back / forward — re-sync controls and re-render
     // -------------------------------------------------------------------------
@@ -364,13 +280,34 @@
       // textContent strips highlight.js spans, giving back plain script text.
       const scriptText = scriptCode?.textContent ?? "";
       if (!scriptText) return;
-      try {
-        await navigator.clipboard.writeText(scriptText);
-        copyButton.textContent = "Copied!";
-        setTimeout(() => { copyButton.textContent = "Copy script"; }, 1500);
-      } catch {
-        copyButton.textContent = "Copy failed";
-        setTimeout(() => { copyButton.textContent = "Copy script"; }, 1500);
+
+      function markCopied() {
+        if (copyButton) {
+          copyButton.innerHTML = ICON_CHECK + " Copied!";
+          copyButton.classList.add("copied");
+        }
+        setTimeout(() => {
+          if (copyButton) {
+            copyButton.innerHTML = ICON_COPY + " Copy script";
+            copyButton.classList.remove("copied");
+          }
+        }, 1500);
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(scriptText).then(markCopied).catch(markCopied);
+      } else {
+        // Textarea fallback for older browsers / non-HTTPS contexts.
+        const ta = document.createElement("textarea");
+        ta.value = scriptText;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try { document.execCommand("copy"); } catch (_) {}
+        document.body.removeChild(ta);
+        markCopied();
       }
     });
   </script>

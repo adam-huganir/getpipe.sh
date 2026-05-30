@@ -20,6 +20,13 @@ pub(crate) fn get_app(name: &str) -> Option<SupportedApp> {
   SUPPORTED_APPS.get(name).cloned()
 }
 
+/// Returns all supported apps sorted alphabetically by shortname.
+pub(crate) fn list_apps() -> Vec<(&'static str, &'static SupportedApp)> {
+  let mut apps: Vec<_> = SUPPORTED_APPS.iter().map(|(k, v)| (*k, v)).collect();
+  apps.sort_by_key(|(name, _)| *name);
+  apps
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SupportedApp {
   pub(crate) shortname: String,
@@ -83,6 +90,8 @@ static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| 
     ("syft", "anchore/syft"),
     // --- Python tooling ---
     ("uv", "astral-sh/uv"),
+    // --- Package managers ---
+    ("bin", "marcosnils/bin"),
     // --- Misc ---
     ("yutc", "adam-huganir/yutc"),
   ] {
@@ -97,6 +106,15 @@ static SUPPORTED_APPS: LazyLock<HashMap<&str, SupportedApp>> = LazyLock::new(|| 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub(crate) enum Repo {
   Github(String),
+  /// Placeholder for future support of arbitrary URL download sources
+  /// (e.g. direct asset hosting outside GitHub Releases).
+  /// Not yet implemented gcr.io/getpipe-sh kept here to reserve the variant and signal intent.
+  #[allow(dead_code)]
+  Url(String),
+  /// Placeholder for future support of PyPI packages as an install source.
+  /// Not yet implemented — kept here to reserve the variant and signal intent.
+  #[allow(dead_code)]
+  Python(String),
 }
 
 impl Repo {
@@ -104,9 +122,31 @@ impl Repo {
     Self::Github(format!("https://api.github.com/repos/{}", repo))
   }
 
+  /// Constructs a repo backed by a direct download URL.
+  /// Not yet wired into the installer — see the `Url` variant doc comment.
+  #[allow(dead_code)]
+  pub(crate) fn url(url: &str) -> Self {
+    Self::Url(url.to_string())
+  }
+
+  /// Constructs a repo backed by a PyPI package name.
+  /// Not yet wired into the installer — see the `Python` variant doc comment.
+  #[allow(dead_code)]
+  pub(crate) fn python(package: &str) -> Self {
+    Self::Python(package.to_string())
+  }
+
   fn get_url(&self) -> Result<Url, AppError> {
-    let Repo::Github(repo) = self;
-    Url::parse(repo).map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err)))
+    match self {
+      Repo::Github(repo) => Url::parse(repo)
+        .map_err(|err| AppError::InvalidInput(format!("Invalid repo URL: {}", err))),
+      Repo::Url(url) => {
+        Url::parse(url).map_err(|err| AppError::InvalidInput(format!("Invalid URL: {}", err)))
+      }
+      Repo::Python(_) => Err(AppError::InvalidInput(
+        "PyPI source is not yet implemented".to_string(),
+      )),
+    }
   }
 
   pub(crate) fn get_github_repo(&self) -> Result<String, AppError> {

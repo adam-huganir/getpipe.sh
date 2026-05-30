@@ -2,6 +2,11 @@
 members = [".", "xtask"]
 resolver = "2"
 
+[features]
+# Reload templates and static files from disk on every request.
+# Intended for local development only; not for production builds.
+hot-reload = []
+
 [package]
 name = "getpipe"
 version = "0.5.0"
@@ -13,7 +18,7 @@ axum = "0.8.4"
 chrono = "0.4.38"
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"
-comrak = { version = "0.51.0", features = ["emojis"], default-features = false }
+comrak = { version = "0.52.0", features = ["emojis", "shortcodes"], default-features = false }
 crossterm = "0.29.0"
 fern = { version = "0.7.1", features = ["chrono", "colored"] }
 flate2 = "1.0"

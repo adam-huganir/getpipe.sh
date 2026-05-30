@@ -5,23 +5,142 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tera::{Filter, Tera};
 
-pub(crate) static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
+// ---------------------------------------------------------------------------
+// Template file manifest — name → path relative to GETPIPE_ROOT.
+// Used by both the embedded (include_str!) and hot-reload paths.
+// ---------------------------------------------------------------------------
+const TEMPLATE_FILES: [(&str, &str); 3] = [
+  ("install.sh", "templates/install.sh"),
+  ("install.ps1", "templates/install.ps1"),
+  ("install-help.md", "templates/install-help.md"),
+];
+
+
+// ---------------------------------------------------------------------------
+// Build a Tera engine with all filters registered.
+// The templates themselves are loaded by the caller.
+// ---------------------------------------------------------------------------
+fn build_tera_engine() -> Tera {
   let mut tera = Tera::default();
-  let (install_sh, content) = ("install.sh", include_str!("../templates/install.sh"));
-  info!("adding template {}", install_sh);
-  tera
-    .add_raw_template(install_sh, content)
-    .unwrap_or_else(|e| panic!("failed to add {} template: {}", install_sh, e));
-  let (install_ps1, content) = ("install.ps1", include_str!("../templates/install.ps1"));
-  info!("adding template {}", install_ps1);
-  tera
-    .add_raw_template(install_ps1, content)
-    .unwrap_or_else(|e| panic!("failed to add {} template: {}", install_ps1, e));
   tera.register_filter("escape_shell", ShellEscape);
   tera.register_filter("escape_ps1", Ps1Escape);
   tera.register_filter("enumerate", Enumerate);
   tera
+}
+
+// ---------------------------------------------------------------------------
+// Production path — templates embedded at compile time via include_str!.
+// ---------------------------------------------------------------------------
+#[cfg(not(feature = "hot-reload"))]
+static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
+  let mut tera = build_tera_engine();
+  for (name, _path) in TEMPLATE_FILES {
+    // include_str! is resolved at compile time; paths are matched by position.
+    let content = match name {
+      "install.sh" => include_str!("../templates/install.sh"),
+      "install.ps1" => include_str!("../templates/install.ps1"),
+      "install-help.md" => include_str!("../templates/install-help.md"),
+      other => panic!("TEMPLATE_FILES contains unhandled name: {}", other),
+    };
+    info!("loading template: {}", name);
+    tera
+      .add_raw_template(name, content)
+      .unwrap_or_else(|e| panic!("failed to add {} template: {}", name, e));
+  }
+  tera
 });
+
+// ---------------------------------------------------------------------------
+// Hot-reload path — templates read from disk on every render call.
+// ---------------------------------------------------------------------------
+#[cfg(feature = "hot-reload")]
+static TEMPLATES: LazyLock<std::sync::Mutex<Tera>> = LazyLock::new(|| {
+  // In hot-reload mode every render() call re-reads from disk anyway, so
+  // the initial load is best-effort: missing files are warned, not fatal.
+  // This lets tests initialize the LazyLock before setting GETPIPE_ROOT.
+  let mut tera = build_tera_engine();
+  let root = crate::hot_reload::root();
+  for (name, rel_path) in TEMPLATE_FILES {
+    let path = root.join(rel_path);
+    match std::fs::read_to_string(&path) {
+      Ok(content) => {
+        info!("hot-reload: loading template {} from {}", name, path.display());
+        if let Err(e) = tera.add_raw_template(name, &content) {
+          log::warn!("hot-reload: failed to parse template {}: {}", name, e);
+        }
+      }
+      Err(e) => {
+        log::warn!(
+          "hot-reload: template {} not found at {} ({}); will retry on first render",
+          name,
+          path.display(),
+          e
+        );
+      }
+    }
+  }
+  std::sync::Mutex::new(tera)
+});
+
+// ---------------------------------------------------------------------------
+// Public API — same surface regardless of feature flag.
+// ---------------------------------------------------------------------------
+
+/// Renders a template by name with the given context.
+pub(crate) fn render(name: &str, context: &tera::Context) -> Result<String, tera::Error> {
+  #[cfg(not(feature = "hot-reload"))]
+  {
+    TEMPLATES.render(name, context)
+  }
+  #[cfg(feature = "hot-reload")]
+  {
+    let mut tera = TEMPLATES.lock().unwrap();
+    let root = crate::hot_reload::root();
+    for (template_name, rel_path) in TEMPLATE_FILES {
+      let path = root.join(rel_path);
+      match std::fs::read_to_string(&path) {
+        Ok(content) => {
+          if let Err(e) = tera.add_raw_template(template_name, &content) {
+            log::warn!(
+              "hot-reload: failed to reload template {}: {}",
+              template_name,
+              e
+            );
+          }
+        }
+        Err(e) => {
+          log::warn!(
+            "hot-reload: failed to read {}: {}",
+            path.display(),
+            e
+          );
+        }
+      }
+    }
+    tera.render(name, context)
+  }
+}
+
+/// Returns the names of all currently loaded templates (used for startup logging).
+pub(crate) fn names() -> Vec<String> {
+  #[cfg(not(feature = "hot-reload"))]
+  {
+    TEMPLATES.get_template_names().map(String::from).collect()
+  }
+  #[cfg(feature = "hot-reload")]
+  {
+    TEMPLATES
+      .lock()
+      .unwrap()
+      .get_template_names()
+      .map(String::from)
+      .collect()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tera filter implementations
+// ---------------------------------------------------------------------------
 
 struct ShellEscape;
 
@@ -80,6 +199,106 @@ impl Filter for Enumerate {
     } else {
       Ok(Value::Array(Vec::new()))
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hot-reload integration test
+// ---------------------------------------------------------------------------
+// Runs only when compiled with --features hot-reload.
+// Verifies that render() re-reads the template file from disk on every call
+// so that edits are picked up without restarting the server.
+//
+// NOTE: this test mutates GETPIPE_ROOT via set_var.  Run with
+//   --test-threads=1
+// if other tests in the binary also touch that env var.
+#[cfg(all(test, feature = "hot-reload"))]
+mod hot_reload_tests {
+  use super::*;
+  use std::sync::Mutex;
+
+  // Serialize env-var access across any concurrent test threads.
+  static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+  // RAII guard: restores GETPIPE_ROOT to its previous value on drop,
+  // including when the test panics, so other tests are not affected.
+  struct EnvGuard {
+    key: &'static str,
+    prev: Option<String>,
+  }
+
+  impl EnvGuard {
+    fn set(key: &'static str, val: &std::path::Path) -> Self {
+      let prev = std::env::var(key).ok();
+      // Safety: serialized by ENV_LOCK held by the caller.
+      unsafe { std::env::set_var(key, val) };
+      Self { key, prev }
+    }
+  }
+
+  impl Drop for EnvGuard {
+    fn drop(&mut self) {
+      // Safety: serialized by ENV_LOCK held by the caller's scope.
+      unsafe {
+        match &self.prev {
+          Some(v) => std::env::set_var(self.key, v),
+          None => std::env::remove_var(self.key),
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn render_picks_up_template_changes_on_disk() {
+    let _env_guard = ENV_LOCK.lock().unwrap();
+
+    // Build a temp directory that looks like a minimal GETPIPE_ROOT.
+    let tmp = std::env::temp_dir().join(format!(
+      "getpipe-hot-reload-test-{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+    ));
+    let templates_dir = tmp.join("templates");
+    std::fs::create_dir_all(&templates_dir).expect("create temp templates dir");
+
+    // Stub the other two templates that render() re-reads on every call.
+    std::fs::write(templates_dir.join("install.sh"), "#!/bin/bash\n")
+      .expect("write install.sh stub");
+    std::fs::write(templates_dir.join("install.ps1"), "# stub\n")
+      .expect("write install.ps1 stub");
+
+    // Use a simple template with no variables so no context setup is needed.
+    let help_path = templates_dir.join("install-help.md");
+    std::fs::write(&help_path, "sentinel-v1").expect("write v1 template");
+
+    // Point the server at our temp directory.
+    // EnvGuard restores GETPIPE_ROOT even if an assert below panics.
+    let _root_guard = EnvGuard::set("GETPIPE_ROOT", &tmp);
+
+    let ctx = tera::Context::new();
+    let out1 = render("install-help.md", &ctx).expect("render v1");
+    assert!(
+      out1.contains("sentinel-v1"),
+      "expected 'sentinel-v1' in first render, got: {out1}"
+    );
+
+    // Overwrite the template on disk — next render() must pick it up.
+    std::fs::write(&help_path, "sentinel-v2").expect("write v2 template");
+
+    let out2 = render("install-help.md", &ctx).expect("render v2");
+    assert!(
+      out2.contains("sentinel-v2"),
+      "hot-reload did not pick up change; got: {out2}"
+    );
+    assert!(
+      !out2.contains("sentinel-v1"),
+      "stale v1 content still present in: {out2}"
+    );
+
+    // Temp dir cleanup (best-effort; EnvGuard already reset GETPIPE_ROOT).
+    std::fs::remove_dir_all(&tmp).ok();
   }
 }
 

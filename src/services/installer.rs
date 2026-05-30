@@ -2,13 +2,13 @@ use crate::domain::platform::TargetDeployment;
 use crate::error::AppError;
 use crate::http::query::InstallQueryOptions;
 use crate::http::responses::ScriptResponse;
-use crate::providers::gh::get_github_download_links;
+use crate::providers::gh::{get_github_download_links, get_github_release_tags};
 use crate::services::templating;
 use crate::supported_apps;
 use crate::supported_apps::{DownloadInfo, Repo, SupportedApp};
 use log::debug;
 
-fn validate_github_path_segment(segment: &str, name: &str) -> Result<(), AppError> {
+pub(crate) fn validate_github_path_segment(segment: &str, name: &str) -> Result<(), AppError> {
   if segment.is_empty() {
     return Err(AppError::InvalidInput(format!("{} cannot be empty", name)));
   }
@@ -64,12 +64,22 @@ pub(crate) async fn build_supported_install_script(
   let (target, links) = load_app(query, &supported_app).await?;
   let (script, extension) = templating::render_install_script(query, &links, &target.os)?;
 
-  Ok(ScriptResponse::new(
+  let mut response = ScriptResponse::new(
     format!("install-{}.{}", supported_app.shortname, extension),
     script,
     query.inline,
     html,
-  ))
+  );
+
+  if html {
+    let mut tags = get_github_release_tags(&supported_app.repo, 20)
+      .await
+      .unwrap_or_default();
+    tags.insert(0, "latest".to_string());
+    response = response.with_tags(tags);
+  }
+
+  Ok(response)
 }
 
 pub(crate) async fn build_arbitrary_github_install_script(
@@ -88,12 +98,22 @@ pub(crate) async fn build_arbitrary_github_install_script(
   let (target, links) = load_app(query, &target_app).await?;
   let (script, extension) = templating::render_install_script(query, &links, &target.os)?;
 
-  Ok(ScriptResponse::new(
+  let mut response = ScriptResponse::new(
     format!("install.{}", extension),
     script,
     query.inline,
     html,
-  ))
+  );
+
+  if html {
+    let mut tags = get_github_release_tags(&target_app.repo, 20)
+      .await
+      .unwrap_or_default();
+    tags.insert(0, "latest".to_string());
+    response = response.with_tags(tags);
+  }
+
+  Ok(response)
 }
 
 pub(crate) async fn load_app(
