@@ -36,8 +36,3 @@ jobs:
           tags: gcr.io/getpipe-sh/server:${{steps.tag.outputs.SHORTREF}}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3
-        with:
-          service: server
-          image: gcr.io/getpipe-sh/server:${{steps.tag.outputs.SHORTREF}}
