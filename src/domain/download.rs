@@ -2,9 +2,7 @@ use crate::domain::artifact::Filetype;
 use crate::domain::platform::TargetDeployment;
 use mime::Mime;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-
-#[derive(PartialEq, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub(crate) struct Target {
   pub(crate) deployment: TargetDeployment,
   pub(crate) filetype: Filetype,

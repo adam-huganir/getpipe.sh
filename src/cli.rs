@@ -20,7 +20,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
-use zip::ZipArchive;
 
 #[derive(Parser)]
 #[command(name = "getpipe")]
@@ -442,12 +441,8 @@ fn default_binary_name(
 
 fn is_archive(content_type: &Mime, name: &str) -> bool {
   let sub = content_type.subtype().as_str();
-  let full = content_type.to_string();
   let lower_name = name.to_ascii_lowercase();
-  full.contains("zip")
-    || sub.contains("zip")
-    || sub.contains("tar")
-    || lower_name.ends_with(".zip")
+  sub.contains("tar")
     || lower_name.ends_with(".tar")
     || lower_name.ends_with(".tar.gz")
     || lower_name.ends_with(".tgz")
@@ -486,24 +481,6 @@ fn list_archive_entries(path: &Path) -> Result<Vec<String>, AppError> {
     .extension()
     .map(|e| e.to_string_lossy().to_ascii_lowercase())
     .unwrap_or_default();
-  if lower == "zip" {
-    let file = File::open(path).map_err(|err| {
-      AppError::InvalidInput(format!("failed to open {}: {}", path.display(), err))
-    })?;
-    let mut archive = ZipArchive::new(file).map_err(|err| {
-      AppError::InvalidInput(format!("failed to read zip {}: {}", path.display(), err))
-    })?;
-    let mut entries = Vec::new();
-    for i in 0..archive.len() {
-      let file = archive
-        .by_index(i)
-        .map_err(|err| AppError::InvalidInput(format!("failed to read zip entry: {}", err)))?;
-      let name = file.name().to_string();
-      entries.push(name);
-    }
-    return Ok(limit_depth(entries, 2));
-  }
-
   if lower == "gz"
     || path.to_string_lossy().ends_with(".tar.gz")
     || path.to_string_lossy().ends_with(".tgz")
@@ -588,39 +565,6 @@ fn extract_archive_entry(
     .extension()
     .map(|e| e.to_string_lossy().to_ascii_lowercase())
     .unwrap_or_default();
-
-  if lower == "zip" {
-    let file = File::open(archive_path).map_err(|err| {
-      AppError::InvalidInput(format!(
-        "failed to open {}: {}",
-        archive_path.display(),
-        err
-      ))
-    })?;
-    let mut archive = ZipArchive::new(file).map_err(|err| {
-      AppError::InvalidInput(format!(
-        "failed to read zip {}: {}",
-        archive_path.display(),
-        err
-      ))
-    })?;
-    let mut zip_file = archive.by_name(entry_name).map_err(|err| {
-      AppError::InvalidInput(format!("failed to open zip entry {}: {}", entry_name, err))
-    })?;
-    let file_name = Path::new(entry_name)
-      .file_name()
-      .map(|f| f.to_string_lossy().to_string())
-      .unwrap_or_else(|| entry_name.to_string());
-    let mut out_path = tempdir.to_path_buf();
-    out_path.push(file_name);
-    let mut out = File::create(&out_path).map_err(|err| {
-      AppError::InvalidInput(format!("failed to create {}: {}", out_path.display(), err))
-    })?;
-    io::copy(&mut zip_file, &mut out).map_err(|err| {
-      AppError::InvalidInput(format!("failed to extract {}: {}", entry_name, err))
-    })?;
-    return Ok(out_path);
-  }
 
   let is_gzip = lower == "gz"
     || archive_path.to_string_lossy().ends_with(".tar.gz")
