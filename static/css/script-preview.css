@@ -1,0 +1,38 @@
+/* Script preview overrides — extends pico.purple.css + overrides.css */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.toolbar .title {
+  margin: 0;
+  font-size: 1.25em;
+  color: var(--pico-muted-color);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2em;
+  margin-bottom: 0;
+  font-size: 1.25em;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--pico-muted-color);
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  opacity: 1;
+  background: var(--pico-code-background-color);
+  border-color: var(--pico-muted-border-color);
+  color: var(--pico-color);
+}

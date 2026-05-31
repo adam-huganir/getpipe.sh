@@ -8,28 +8,24 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 {% if (assets | length > 0) %}
-$RUN_DIRECTORY = $PWD.Path
-$_QUIET = {{ quiet | escape_shell }}
-$_FORCE = {{ force | escape_shell }}
-$_CANONICAL_BINARY_NAME = {{ app | escape_shell }}
+$_ORIG_DIR = $PWD.Path
+$_FORCE = {{ force | escape_ps1 }}
+$_CANONICAL_BINARY_NAME = {{ app | escape_ps1 }}
 
 $_E_GENERIC_ERROR = 1
 
 #------------------------------------------------------------------------------
 # 02) Temporary Workspace and Exit Cleanup
 #------------------------------------------------------------------------------
-$_TMPDIR = New-TemporaryFile | ForEach-Object {
-    Remove-Item $_
-    New-Item -ItemType Directory -Path $_
-}
-Set-Location $_TMPDIR.FullName
+$_TMPDIR = (New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }).FullName
+Set-Location $_TMPDIR
 
 $cleanup = {
     if (Test-Path $_TMPDIR) {
         [Console]::Error.WriteLine("Removing $_TMPDIR")
         Remove-Item $_TMPDIR -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Set-Location $RUN_DIRECTORY
+    Set-Location $_ORIG_DIR
 }
 
 Register-EngineEvent PowerShell.Exiting -Action $cleanup | Out-Null
@@ -113,21 +109,58 @@ function Get-WebContent {
 }
 
 #------------------------------------------------------------------------------
-# 05) Rendered Asset Arrays
+# 05) Overwrite Guard
 #------------------------------------------------------------------------------
-$_urls = @({% for asset in assets %}"{{ asset.url | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
-$_filenames = @({% for asset in assets %}"{{ asset.name | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
-$_filetypes = @({% for asset in assets %}"{{ asset.filetype | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
-$_printables = @({% for asset in assets %}"{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }}"{% if not loop.last %}, {% endif %}{% endfor %})
+function Confirm-Overwrite {
+    param([string]$Destination)
+    if ((Test-Path $Destination) -and ($_FORCE -ne 'true')) {
+        $answer = Read-Host "$Destination already exists. Overwrite? [y/N]"
+        if ($answer -notmatch '^[yY]') {
+            Write-Host "skipping installation"
+            exit 0
+        }
+    }
+}
 
 #------------------------------------------------------------------------------
-# 06) Asset Selection
+# 06) Installation Prefix
+#------------------------------------------------------------------------------
+{% if prefix and prefix != "auto" %}
+$RUN_DIRECTORY = {{ prefix | escape_ps1 }}
+{% else %}
+function Get-AutoPrefix {
+    # 1. Admin → system-wide ProgramFiles
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isAdmin) {
+        return $env:ProgramFiles
+    }
+    # 2. Per-user Programs folder exists → use it
+    $localPrograms = Join-Path $env:LOCALAPPDATA "Programs"
+    if (Test-Path $localPrograms) {
+        return $localPrograms
+    }
+    # 3. Fallback: directory from which the script was invoked
+    return $_ORIG_DIR
+}
+$RUN_DIRECTORY = Get-AutoPrefix
+{% endif %}
+
+#------------------------------------------------------------------------------
+# 07) Rendered Asset Arrays
+#------------------------------------------------------------------------------
+$_urls = @({% for asset in assets %}{{ asset.url | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+$_filenames = @({% for asset in assets %}{{ asset.name | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+$_filetypes = @({% for asset in assets %}{{ asset.filetype | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+$_printables = @({% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+
+#------------------------------------------------------------------------------
+# 08) Asset Selection
 #------------------------------------------------------------------------------
 Write-Host "Please select one of the following:"
 $choice = Get-UserChoice -Choices $_printables -AllowQuit
 
 #------------------------------------------------------------------------------
-# 07) Selection Validation
+# 09) Selection Validation
 #------------------------------------------------------------------------------
 if ($choice -eq "q" -or $choice -eq "n") {
     exit 0
@@ -139,7 +172,7 @@ if ($choice -lt 0 -or $choice -ge $_urls.Count) {
 }
 
 #------------------------------------------------------------------------------
-# 08) Download and Install Dispatch
+# 10) Download and Install Dispatch
 #------------------------------------------------------------------------------
 Write-Host "Downloading from $($_urls[$choice]) to $_TMPDIR"
 $_type = $_filetypes[$choice]
@@ -147,7 +180,7 @@ $_type = $_filetypes[$choice]
 switch ($_type) {
     "binary" {
         $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR.FullName $filename
+        $saved_file = Join-Path $_TMPDIR $filename
         if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
             [Console]::Error.WriteLine("failed downloading binary asset")
             exit 100
@@ -173,6 +206,7 @@ switch ($_type) {
         }
 
         $dest_path = Join-Path $binary_dir $binary_name
+        Confirm-Overwrite $dest_path
         Copy-Item $saved_file $dest_path -Force
         Write-Host "Installed $binary_name to $dest_path"
     }
@@ -190,17 +224,17 @@ switch ($_type) {
     }
     "msi installer" {
         $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR.FullName $filename
+        $saved_file = Join-Path $_TMPDIR $filename
         if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
             [Console]::Error.WriteLine("failed downloading msi installer")
             exit 100
         }
         Write-Host "Launching MSI installer..."
-        Start-Process msiexec.exe -ArgumentList "/i `"$saved_file`"" -Wait
+        Start-Process msiexec.exe -ArgumentList @("/i", $saved_file) -Wait
     }
     "exe installer" {
         $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR.FullName $filename
+        $saved_file = Join-Path $_TMPDIR $filename
         if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
             [Console]::Error.WriteLine("failed downloading exe installer")
             exit 100
@@ -212,7 +246,7 @@ switch ($_type) {
         $filename = $_filenames[$choice]
 
         # Download and extract tar.gz
-        $archive_path = Join-Path $_TMPDIR.FullName $filename
+        $archive_path = Join-Path $_TMPDIR $filename
         if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $archive_path)) {
             [Console]::Error.WriteLine("failed downloading tar.gz archive")
             exit 100
@@ -235,11 +269,19 @@ switch ($_type) {
             exit 100
         }
 
-        # Find executable files
-        $executable_files = @()
-        Get-ChildItem -Recurse -File | ForEach-Object {
-            if ($_.Extension -eq ".exe" -or $_.Extension -eq "" -or $_.Name -notmatch '\.') {
-                $executable_files += $_.FullName
+        # Find executable files: prefer .exe, fall back to extensionless files.
+        # When a canonical binary name is known, narrow extensionless candidates to
+        # files whose leaf name matches it.
+        $exe_files = @(Get-ChildItem -Recurse -File -Filter "*.exe" | ForEach-Object { $_.FullName })
+        if ($exe_files.Count -gt 0) {
+            $executable_files = $exe_files
+        } else {
+            $candidates = @(Get-ChildItem -Recurse -File | Where-Object { $_.Extension -eq "" } | ForEach-Object { $_.FullName })
+            if (-not [string]::IsNullOrWhiteSpace($_CANONICAL_BINARY_NAME)) {
+                $named = @($candidates | Where-Object { [System.IO.Path]::GetFileName($_) -eq $_CANONICAL_BINARY_NAME })
+                $executable_files = if ($named.Count -gt 0) { $named } else { $candidates }
+            } else {
+                $executable_files = $candidates
             }
         }
 
@@ -256,8 +298,11 @@ switch ($_type) {
                     New-Item -ItemType Directory -Path $default_bin_dir -Force | Out-Null
                 }
 
-                $dest_name = Split-Path $selected_file -Leaf
+                # Use canonical binary name when set; otherwise keep the extracted file name.
+                $extracted_name = Split-Path $selected_file -Leaf
+                $dest_name = if (-not [string]::IsNullOrWhiteSpace($_CANONICAL_BINARY_NAME)) { $_CANONICAL_BINARY_NAME } else { $extracted_name }
                 $dest_path = Join-Path $default_bin_dir $dest_name
+                Confirm-Overwrite $dest_path
                 Copy-Item $selected_file $dest_path -Force
                 Write-Host "Installed $dest_name to $dest_path"
             }
@@ -270,7 +315,7 @@ switch ($_type) {
 }
 {% else %}
 #------------------------------------------------------------------------------
-# 09) No Assets Available
+# 11) No Assets Available
 #------------------------------------------------------------------------------
 [Console]::Error.WriteLine("no assets found")
 exit 100

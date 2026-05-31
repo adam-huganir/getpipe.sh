@@ -5,76 +5,72 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{title}}</title>
   <style>/*__HIGHLIGHT_CSS__*/</style>
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0;
-      padding: 24px;
-      background: #0b0f17;
-      color: #e6edf3;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
-    .container {
-      width: min(98vw, 1800px);
-      margin: 0 auto;
-    }
-    .title {
-      margin: 0 0 12px 0;
-      font-size: 14px;
-      color: #9fb3c8;
-    }
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-      gap: 12px;
-    }
-    .copy-button {
-      border: 1px solid #2f3a4f;
-      background: #111827;
-      color: #e6edf3;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .copy-button:hover {
-      background: #172033;
-    }
-    .code-link {
-      color: #7cc7ff;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    pre {
-      margin: 0;
-      padding: 18px 20px;
-      border-radius: 10px;
-      overflow-x: auto;
-      border: 1px solid #263041;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    code {
-      font-size: 14px;
-      line-height: 1.55;
-      tab-size: 2;
-      white-space: pre;
-    }
-  </style>
+  <style>/*__SHARED_CSS__*/</style>
+  <style>/*__PAGE_CSS__*/</style>
 </head>
 <body>
-  <div class="container">
+  <span hidden id="icon-copy">{{icon_copy}}</span>
+  <span hidden id="icon-check">{{icon_check}}</span>
+  <span hidden id="icon-download">{{icon_download}}</span>
+  <main class="container">
     <div class="toolbar">
-      <p class="title">{{filename}}</p>
-      <button id="copy-script" class="copy-button" type="button">Copy script</button>
+      <p id="script-title" class="title">{{filename}}</p>
+      <button id="download-script" class="icon-btn" type="button" aria-label="Download script">{{icon_download}}</button>
+    </div>
+    <div class="controls grid">
+      <div class="ctrl-group">
+        <label for="ctrl-os">os</label>
+        <select id="ctrl-os">
+          <option value="linux">linux</option>
+          <option value="mac">mac</option>
+          <option value="windows">windows</option>
+          <option value="freebsd">freebsd</option>
+          <option value="openbsd">openbsd</option>
+          <option value="netbsd">netbsd</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label for="ctrl-arch">arch</label>
+        <select id="ctrl-arch">
+          <option value="amd64">amd64</option>
+          <option value="arm64">arm64</option>
+          <option value="x86">x86</option>
+          <option value="arm">arm</option>
+          <option value="mips64le">mips64le</option>
+          <option value="mips64">mips64</option>
+          <option value="mipsle">mipsle</option>
+          <option value="mips">mips</option>
+          <option value="ppc64le">ppc64le</option>
+          <option value="ppc64">ppc64</option>
+          <option value="riscv">riscv</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label for="ctrl-version">version</label>
+        <select id="ctrl-version">
+          <option value="latest">latest</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label for="ctrl-method">method</label>
+        <select id="ctrl-method">
+          <option value="binary">binary</option>
+          <option value="installer">installer</option>
+        </select>
+      </div>
     </div>
     <pre><code id="script-code" class="language-{{language}}">{{code}}</code></pre>
-  </div>
+  </main>
+  <script id="release-tags-data" type="application/json">{{release_tags_json}}</script>
   <script>/*__HIGHLIGHT_JS__*/</script>
+  <script>/*__CLIPBOARD_JS__*/</script>
   <script>
-    const linkifyUrlsInUrlsLines = (highlightedHtml, rawScriptText) => {
+    // -------------------------------------------------------------------------
+    // Linkify URLs inside the _urls=( ... ) array in the rendered script.
+    // Operates on the highlight.js HTML output so that URLs become clickable
+    // without breaking the surrounding syntax colouring.
+    // -------------------------------------------------------------------------
+    function linkifyUrlsInUrlsLines(highlightedHtml, rawScriptText) {
       const highlightedLines = highlightedHtml.split("\n");
       const rawLines = rawScriptText.split("\n");
       const lineCount = Math.max(highlightedLines.length, rawLines.length);
@@ -82,19 +78,18 @@
 
       for (let i = 0; i < lineCount; i += 1) {
         const rawLine = rawLines[i] ?? "";
-        const trimmedRawLine = rawLine.trim();
-        if (trimmedRawLine.includes("_urls=(") || trimmedRawLine.includes("_urls =(")) {
+        const trimmed = rawLine.trim();
+        if (trimmed.includes("_urls=(") || trimmed.includes("_urls =(")) {
           inUrlsBlock = true;
           continue;
         }
-        if (inUrlsBlock && trimmedRawLine === ")") {
+        if (inUrlsBlock && trimmed === ")") {
           inUrlsBlock = false;
           continue;
         }
         if (!inUrlsBlock) continue;
 
-        const highlightedLine = highlightedLines[i] ?? "";
-        highlightedLines[i] = highlightedLine.replace(
+        highlightedLines[i] = (highlightedLines[i] ?? "").replace(
           /https?:\/\/[^\s<)]+/g,
           (matchedUrl) => {
             const cleanUrl = matchedUrl.replace(/(?:&#x27;|&quot;|['"`])+$/g, "");
@@ -105,48 +100,214 @@
       }
 
       return highlightedLines.join("\n");
-    };
-
-    const copyButton = document.getElementById("copy-script");
-    const scriptCode = document.getElementById("script-code");
-    const rawScript = scriptCode?.textContent ?? "";
-    const classNames = scriptCode ? [...scriptCode.classList] : [];
-    const languageClass = classNames.find((name) =>
-      name.startsWith("language-")
-    );
-    const language = languageClass?.replace("language-", "");
-    /**
-     * @typedef {{ value: string }} HljsResult
-     * @typedef {{
-     *   highlight: (code: string, options: { language: string }) => HljsResult,
-     *   highlightAuto: (code: string) => HljsResult
-     * }} HljsApi
-     */
-    /** @type {HljsApi | undefined} */
-    const hljsLib = window["hljs"];
-    if (scriptCode && rawScript && hljsLib) {
-      const highlighted = language
-        ? hljsLib.highlight(rawScript, { language }).value
-        : hljsLib.highlightAuto(rawScript).value;
-      scriptCode.innerHTML = linkifyUrlsInUrlsLines(highlighted, rawScript);
     }
 
-    copyButton?.addEventListener("click", async () => {
-      const scriptText = scriptCode?.textContent ?? "";
-      if (!scriptText) return;
+    // -------------------------------------------------------------------------
+    // Elements
+    // -------------------------------------------------------------------------
+    const scriptCode  = document.getElementById("script-code");
+    const scriptTitle = document.getElementById("script-title");
+
+    // Populate the version select from the server-embedded release tags.
+    (function populateVersionSelect() {
+      const dataEl = document.getElementById("release-tags-data");
+      if (!dataEl) return;
+      /** @type {string[]} */
+      const tags = JSON.parse(dataEl.textContent ?? "[]");
+      if (!tags.length) return;
+      const versionSelect = /** @type {HTMLSelectElement|null} */ (
+        document.getElementById("ctrl-version")
+      );
+      if (!versionSelect) return;
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get("version") ?? "latest";
+      versionSelect.innerHTML = "";
+      for (const tag of tags) {
+        const opt = document.createElement("option");
+        opt.value = tag;
+        opt.textContent = tag;
+        versionSelect.appendChild(opt);
+      }
+      versionSelect.value = current;
+      if (!versionSelect.value && tags.length) versionSelect.value = tags[0];
+    })();
+
+    /** @type {{ highlight: (c:string,o:{language:string})=>{value:string}, highlightAuto: (c:string)=>{value:string} } | undefined} */
+    const hljsLib = /** @type {any} */ (window)["hljs"];
+
+    // Language is mutable — it changes when the user switches between a
+    // non-Windows OS (bash) and Windows (powershell).
+    const initialLangClass = [...(scriptCode?.classList ?? [])].find((c) =>
+      c.startsWith("language-")
+    );
+    let language = initialLangClass?.replace("language-", "") ?? "bash";
+
+    // -------------------------------------------------------------------------
+    // Rendering
+    // -------------------------------------------------------------------------
+    function renderScript(rawText) {
+      if (!scriptCode) return;
+      if (hljsLib) {
+        const highlighted = language
+          ? hljsLib.highlight(rawText, { language }).value
+          : hljsLib.highlightAuto(rawText).value;
+        scriptCode.innerHTML = linkifyUrlsInUrlsLines(highlighted, rawText);
+      } else {
+        scriptCode.textContent = rawText;
+      }
+    }
+
+    // Render the server-provided script on first load.
+    // textContent decodes HTML entities that were escaped server-side.
+    renderScript(scriptCode?.textContent ?? "");
+
+    // -------------------------------------------------------------------------
+    // Controls — param name → element id mapping
+    // -------------------------------------------------------------------------
+    /** @type {Array<{ param: string, id: string }>} */
+    const CONTROLS = [
+      { param: "os",      id: "ctrl-os"      },
+      { param: "arch",    id: "ctrl-arch"    },
+      { param: "version", id: "ctrl-version" },
+      { param: "method",  id: "ctrl-method"  },
+    ];
+
+    // Seed controls from the current URL query string.
+    function applyParamsToControls(params) {
+      for (const { param, id } of CONTROLS) {
+        const el = /** @type {HTMLSelectElement|HTMLInputElement|null} */ (
+          document.getElementById(id)
+        );
+        if (!el) continue;
+        const val = params.get(param);
+        if (val !== null) el.value = val;
+      }
+      // Ensure the version field shows "latest" when the param is absent.
+      const versionEl = document.getElementById("ctrl-version");
+      if (versionEl && !params.has("version")) {
+        /** @type {HTMLSelectElement} */ (versionEl).value = "latest";
+      }
+    }
+
+    applyParamsToControls(new URLSearchParams(window.location.search));
+
+    // -------------------------------------------------------------------------
+    // Reload — fetch the new script and update everything
+    // -------------------------------------------------------------------------
+    async function reloadScript({ push = true } = {}) {
+      // Build the new set of params from the current control values.
+      const params = new URLSearchParams(window.location.search);
+      params.delete("inline"); // never show inline=true in the displayed URL
+
+      for (const { param, id } of CONTROLS) {
+        const el = /** @type {HTMLSelectElement|HTMLInputElement|null} */ (
+          document.getElementById(id)
+        );
+        if (!el) continue;
+        const val = el.value.trim();
+        if (val) {
+          params.set(param, val);
+        } else {
+          params.delete(param);
+        }
+      }
+
+      // Update the browser URL so it is shareable.
+      const newSearch = params.toString();
+      const newUrl = `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`;
+      if (push) history.pushState({}, "", newUrl);
+
+      // Update language from the selected OS — must happen before renderScript.
+      const osVal = params.get("os") ?? "linux";
+      language = osVal === "windows" ? "powershell" : "bash";
+      if (scriptCode) scriptCode.className = `language-${language}`;
+
+      // Fetch the raw script text.
+      const fetchParams = new URLSearchParams(params);
+      fetchParams.set("inline", "true");
       try {
-        await navigator.clipboard.writeText(scriptText);
-        copyButton.textContent = "Copied!";
+        const res = await fetch(
+          `${window.location.pathname}?${fetchParams.toString()}`
+        );
+        if (!res.ok) {
+          const errText = await res.text();
+          if (scriptCode) scriptCode.textContent = `Error ${res.status}: ${errText}`;
+          return;
+        }
+
+        // Update the filename from the Content-Disposition header.
+        const disposition = res.headers.get("Content-Disposition");
+        const filenameMatch = disposition?.match(/filename="([^"]+)"/);
+        const newFilename = filenameMatch?.[1];
+        if (newFilename) {
+          if (scriptTitle) scriptTitle.textContent = newFilename;
+          document.title = newFilename;
+        }
+
+        renderScript(await res.text());
+      } catch (err) {
+        console.error("Failed to reload script:", err);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Event listeners — selects respond to "change"; version input on Enter/blur
+    // -------------------------------------------------------------------------
+    for (const { id } of CONTROLS) {
+      const el = document.getElementById(id);
+      if (!el || el.tagName !== "SELECT") continue;
+      el.addEventListener("change", () => reloadScript());
+    }
+
+    // -------------------------------------------------------------------------
+    // Browser back / forward — re-sync controls and re-render
+    // -------------------------------------------------------------------------
+    window.addEventListener("popstate", () => {
+      const params = new URLSearchParams(window.location.search);
+      applyParamsToControls(params);
+      reloadScript({ push: false });
+    });
+
+    // -------------------------------------------------------------------------
+    // Download button
+    // -------------------------------------------------------------------------
+    (function () {
+      const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById("download-script"));
+      if (!btn) return;
+      const ICON_DL    = document.getElementById("icon-download")?.innerHTML ?? "";
+      const ICON_CHECK = document.getElementById("icon-check")?.innerHTML ?? "";
+
+      function markDownloaded() {
+        btn.innerHTML = ICON_CHECK;
+        btn.classList.add("copied");
         setTimeout(() => {
-          copyButton.textContent = "Copy script";
-        }, 1500);
-      } catch {
-        copyButton.textContent = "Copy failed";
-        setTimeout(() => {
-          copyButton.textContent = "Copy script";
+          btn.innerHTML = ICON_DL;
+          btn.classList.remove("copied");
         }, 1500);
       }
-    });
+
+      btn.addEventListener("click", async () => {
+        const params = new URLSearchParams(window.location.search);
+        params.set("inline", "true");
+        try {
+          const res = await fetch(`${window.location.pathname}?${params.toString()}`);
+          if (!res.ok) return;
+          const text = await res.text();
+          const filename = scriptTitle?.textContent || "install.sh";
+          const blob = new Blob([text], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          markDownloaded();
+        } catch (err) {
+          console.error("Failed to download script:", err);
+        }
+      });
+    })();
+
   </script>
 </body>
 </html>

@@ -1,10 +1,11 @@
 use crate::domain::platform::{TargetArch, TargetOs};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use std::fmt::Display;
 use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum InstallMethod {
   Installer,
   Binary,
@@ -21,7 +22,7 @@ impl Display for InstallMethod {
 
 impl From<&str> for InstallMethod {
   fn from(value: &str) -> Self {
-    match value {
+    match value.to_ascii_lowercase().as_str() {
       "installer" => InstallMethod::Installer,
       _ => InstallMethod::Binary,
     }
@@ -59,7 +60,10 @@ fn default_latest() -> String {
 }
 
 fn default_prefix() -> String {
-  "$HOME/.local".to_string()
+  // "auto" — each template runs its own detection at install time:
+  // bash: root→/usr/local, $HOME/.local/bin→$HOME/.local, $HOME/bin→$HOME, else ./
+  // ps1:  admin→ProgramFiles, LOCALAPPDATA\Programs exists→that, else ./
+  "auto".to_string()
 }
 
 fn default_arch() -> TargetArch {
@@ -87,7 +91,7 @@ fn default_quiet() -> bool {
 }
 
 fn default_log_level() -> String {
-  "DEBUG".to_string()
+  "INFO".to_string()
 }
 
 fn default_inline() -> bool {
@@ -129,21 +133,23 @@ impl InstallQueryOptions {
   }
 
   pub(crate) fn template_globals(&self) -> Map<String, Value> {
-    json!({
-        "app": self.app.as_deref().unwrap_or(""),
-        "version": self.version.as_str(),
-        "prefix": self.prefix.as_str(),
-        "arch": self.arch.to_string(),
-        "os": self.os.to_string(),
-        "method": self.method.to_string(),
-        "download_only": self.download_only,
-        "force": self.force,
-        "quiet": self.quiet,
-        "log_level": self.log_level.as_str(),
-        "inline": self.inline,
-    })
-    .as_object()
-    .unwrap()
-    .to_owned()
+    // Build directly as a Map so there is no hidden .unwrap() on the
+    // Value::Object extraction that json!() + .as_object() would require.
+    let mut map = Map::with_capacity(11);
+    map.insert(
+      "app".into(),
+      Value::String(self.app.as_deref().unwrap_or("").to_string()),
+    );
+    map.insert("version".into(), Value::String(self.version.clone()));
+    map.insert("prefix".into(), Value::String(self.prefix.clone()));
+    map.insert("arch".into(), Value::String(self.arch.to_string()));
+    map.insert("os".into(), Value::String(self.os.to_string()));
+    map.insert("method".into(), Value::String(self.method.to_string()));
+    map.insert("download_only".into(), Value::Bool(self.download_only));
+    map.insert("force".into(), Value::Bool(self.force));
+    map.insert("quiet".into(), Value::Bool(self.quiet));
+    map.insert("log_level".into(), Value::String(self.log_level.clone()));
+    map.insert("inline".into(), Value::Bool(self.inline));
+    map
   }
 }
