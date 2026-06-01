@@ -2,7 +2,6 @@ use paste::paste;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
-use utoipa::ToSchema;
 
 macro_rules! impl_caseless_deserialize {
     // Two-arg form: $description is shown in error messages (e.g. in a 400 response body).
@@ -41,7 +40,7 @@ macro_rules! impl_caseless_deserialize {
     };
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, ToSchema)]
+#[derive(PartialEq, Debug, Clone, Serialize)]
 pub(crate) enum TargetOs {
   Windows,
   Linux,
@@ -111,7 +110,7 @@ impl Display for TargetOs {
   }
 }
 
-#[derive(PartialEq, Debug, Serialize, ToSchema, Clone)]
+#[derive(PartialEq, Debug, Serialize, Clone)]
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 pub(crate) enum TargetArch {
   Amd64,
@@ -226,7 +225,7 @@ impl TargetArch {
   }
 }
 
-#[derive(PartialEq, Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct TargetDeployment {
   pub(crate) os: TargetOs,
   pub(crate) arch: TargetArch,

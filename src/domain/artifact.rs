@@ -1,8 +1,6 @@
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use utoipa::ToSchema;
-
 fn get_extensions(filename: &str) -> Vec<String> {
   // Split on '.', skip the basename (everything before the first dot).
   // Filter only empty segments, which arise from leading dots (e.g. ".bashrc")
@@ -16,14 +14,13 @@ fn get_extensions(filename: &str) -> Vec<String> {
     .collect()
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub(crate) enum ArchiveType {
   Tar,
   TarGz,
   TarBz2,
   TarXz,
   _7z,
-  Zip,
   Rar,
   Gzip,
 }
@@ -36,7 +33,6 @@ impl Display for ArchiveType {
       ArchiveType::TarBz2 => write!(f, "tar.bz2"),
       ArchiveType::TarXz => write!(f, "tar.xz"),
       ArchiveType::_7z => write!(f, "7z"),
-      ArchiveType::Zip => write!(f, "zip"),
       ArchiveType::Rar => write!(f, "rar"),
       ArchiveType::Gzip => write!(f, "gz"),
     }
@@ -54,7 +50,6 @@ impl ArchiveType {
     let tar = ["tar"];
     let gz = ["gz"];
     let z7z = ["7z"];
-    let zip = ["zip"];
     let rar = ["rar"];
 
     if tar_gz.iter().any(|x| input.ends_with(x)) {
@@ -77,9 +72,6 @@ impl ArchiveType {
     if z7z.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::_7z);
     }
-    if zip.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Zip);
-    }
     if rar.iter().any(|x| input.ends_with(x)) {
       return Some(ArchiveType::Rar);
     }
@@ -87,7 +79,7 @@ impl ArchiveType {
   }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub(crate) enum InstallerType {
   Msi,
   Exe,
@@ -125,7 +117,7 @@ impl Display for InstallerType {
   }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub(crate) enum ScriptType {
   Bat,
   Sh,
@@ -164,7 +156,7 @@ impl Display for ScriptType {
   }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub(crate) enum Filetype {
   Binary,
   Script(ScriptType),
@@ -195,7 +187,6 @@ impl Filetype {
       "application/x-xar" => Filetype::Installer(InstallerType::Pkg),
       "application/x-gtar" | "application/gzip" => Filetype::Archive(ArchiveType::TarGz),
       "application/x-ms-dos-executable" => Filetype::Binary,
-      "application/zip" => Filetype::Archive(ArchiveType::Zip),
       "application/x-sh" => Filetype::Script(ScriptType::Sh),
       _ => Filetype::Unknown,
     }

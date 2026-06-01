@@ -12,8 +12,6 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 mod cli;
 mod config;
 mod domain;
@@ -28,9 +26,8 @@ mod supported_apps;
 mod templates;
 
 use crate::cli::{CliInstallOutput, Commands, ScriptCommands};
-use crate::domain::platform::{TargetArch, TargetOs};
 use crate::error::AppError;
-use crate::http::query::{InstallMethod, InstallQueryOptions};
+use crate::http::query::InstallQueryOptions;
 use crate::http::responses::ScriptResponse;
 use crate::services::installer;
 use clap_complete::generate;
@@ -79,20 +76,6 @@ async fn favicon() -> impl IntoResponse {
   )
 }
 
-#[utoipa::path(
-  get,
-  path = "/install/{user}/{repo}",
-  params(
-    ("user" = String, Path, description = "GitHub username"),
-    ("repo" = String, Path, description = "GitHub repository name"),
-    ("inline" = Option<bool>, Query, description = "Return script as browser-friendly plain text when true", nullable)
-  ),
-  responses(
-    (status = 200, description = "Install script (bash)for arbitrary GitHub repository", body = ScriptResponse, content_type = "application/x-sh"),
-    (status = 200, description = "Install script (powershell) for arbitrary GitHub repository", body = ScriptResponse, content_type = "application/x-powershell")
-  ),
-  tag = "install"
-)]
 async fn install_arbitrary_github_handler(
   Path((user, repo)): Path<(String, String)>,
   Query(mut q): Query<InstallQueryOptions>,
@@ -106,23 +89,6 @@ async fn install_arbitrary_github_handler(
     .await
 }
 
-#[utoipa::path(
-  get,
-  path = "/install/{app}",
-  params(
-    ("app" = String, Path, description = "Application name (e.g., yq, jq, gh)"),
-    ("os" = Option<String>, Query, description = "target os"),
-    ("arch" = Option<String>, Query, description = "target architecture", nullable),
-    ("prefix" = Option<String>, Query, description = "install directory", nullable),
-    ("version" = Option<String>, Query, description = "app version, default is latest", nullable),
-    ("inline" = Option<bool>, Query, description = "Return script as browser-friendly plain text when true", nullable)
-  ),
-  responses(
-    (status = 200, description = "Install script (bash) for the application", body = ScriptResponse, content_type = "application/x-sh"),
-    (status = 200, description = "Install script (powershell) for the application", body = ScriptResponse, content_type = "application/x-powershell")
-  ),
-  tag = "install"
-)]
 async fn install_handler(
   Path(app): Path<String>,
   Query(mut q): Query<InstallQueryOptions>,
@@ -221,35 +187,6 @@ async fn log_requests_middleware(request: Request, next: Next) -> impl IntoRespo
   );
   response
 }
-
-#[derive(OpenApi)]
-#[openapi(
-  info(
-    title = "getpipe.sh API",
-    version = "0.5.0",
-    description = "getpipe.sh - Generate install scripts for popular CLI tools",
-    contact(
-      name = "getpipe.sh",
-      email = "adam@huganir.com",
-      url = "https://github.com/adam-huganir/getpipe.sh"
-    )
-  ),
-  servers(
-    (url = "http://localhost:8000/v1", description = "Local server"),
-    (url = "https://getpipe.sh/v1", description = "Production server")
-  ),
-  paths(
-    install_handler,
-    install_arbitrary_github_handler
-  ),
-  components(
-    schemas(InstallQueryOptions, ScriptResponse, InstallMethod, TargetOs, TargetArch)
-  ),
-  tags(
-    (name = "install", description = "Install script generation")
-  )
-)]
-struct ApiDoc;
 
 async fn run_server(serve_args: Option<&cli::ServeArgs>) -> anyhow::Result<()> {
   // Load config (also initializes lazy static CONFIG)
@@ -408,7 +345,6 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
     .route("/install/{*rest}", get(install_latest_redirect))
     .route("/favicon.ico", get(favicon))
     .nest("/v1", v1_router)
-    .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
     .fallback(not_found_handler)
     .layer(cors)
     .layer(DefaultBodyLimit::max(16 * 1024));

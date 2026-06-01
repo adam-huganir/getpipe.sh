@@ -2,9 +2,7 @@ use crate::domain::platform::{TargetArch, TargetOs};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt::Display;
-use utoipa::{IntoParams, ToSchema};
-
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum InstallMethod {
   Installer,
@@ -29,7 +27,7 @@ impl From<&str> for InstallMethod {
   }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize, ToSchema, IntoParams)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub(crate) struct InstallQueryOptions {
   #[serde(skip)]
   app: Option<String>,

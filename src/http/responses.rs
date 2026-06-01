@@ -2,8 +2,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use tera::escape_html;
-use utoipa::ToSchema;
-
 const SCRIPT_PREVIEW_HTML_TEMPLATE: &str = include_str!("../../templates/script_preview.html");
 const HIGHLIGHT_JS: &str = include_str!("../../static/css/highlightjs/highlight.min.js");
 const HIGHLIGHT_CSS: &str =
@@ -31,7 +29,7 @@ fn asset(rel_path: &str, fallback: &str) -> String {
   }
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct ScriptResponse {
   filename: String,
   #[serde(skip)]
