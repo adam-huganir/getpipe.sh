@@ -9,75 +9,190 @@ _artifacts=( {% for asset in assets %}
 {%- endfor %}
 )
 
+{% raw %}
 #------------------------------------------------------------------------------
-# 02) Runtime Setup
+# 04) Terminal Cursor Primitives
 #------------------------------------------------------------------------------
-set -euo pipefail
-_E_GENERIC_ERROR=1
-_ORIG_DIR="$PWD"
-_FORCE={{ force | escape_shell }}
-_CANONICAL_BINARY_NAME={{ app | escape_shell }}
+_cur_up()      { printf '\033[%dA' "${1:-1}" >&2; }
+_cur_down()    { printf '\033[%dB' "${1:-1}" >&2; }
+_cur_forward() { printf '\033[%dC' "${1:-1}" >&2; }
+_cur_back()    { printf '\033[%dD' "${1:-1}" >&2; }
+_cur_bol()     { printf '\033[1G'  >&2; }
+_cur_save()    { printf '\033[s'   >&2; }
+_cur_restore() { printf '\033[u'   >&2; }
+_cur_hide()    { printf '\033[?25l' >&2; }
+_cur_show()    { printf '\033[?25h' >&2; }
+_clear_line()  { printf '\033[2K'  >&2; }
+_line_bold()    { printf '\033[1m'  >&2; }
+_line_normal()  { printf '\033[0m'  >&2; }
+_line_reverse() { printf '\033[7m'  >&2; }
 
 #------------------------------------------------------------------------------
-# 03) Temporary Workspace and Exit Cleanup
+# 05) Multi-Select Menu
 #------------------------------------------------------------------------------
-_TMPDIR="$(mktemp -d)"
-cd "$_TMPDIR"
-trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \"$_TMPDIR\"" EXIT
-
-#------------------------------------------------------------------------------
-# 04) Interactive Choice Prompt
-#------------------------------------------------------------------------------
-_ask_choices() {
-  local OPTIND opt add_none add_quit idx choices choice
-  add_none=false
-  add_quit=false
-  while getopts "nq" opt; do
-    case "$opt" in
-      n) add_none=true ;;
-      q) add_quit=true ;;
-      *) printf "invalid option\n" >&2; exit 1 ;;
-    esac
+_draw_menu() {
+  local single="$1" current="$2"; shift 2
+  local items=("$@")
+  local i sel width=${#items[@]}; width=${#width}
+  for i in "${!items[@]}"; do
+    sel="${_MENU_SELECTED[$i]:-0}"
+    _cur_bol; _clear_line
+    printf '  ' >&2
+    if [ "$i" -eq "$current" ]; then
+      _line_reverse; printf '%*d)' "$width" "$((i + 1))" >&2; _line_normal
+    else
+      printf '%*d)' "$width" "$((i + 1))" >&2
+    fi
+    printf ' ' >&2
+    if [ "$sel" = "1" ]; then
+      _line_reverse; printf '%s' "${items[$i]}" >&2; _line_normal
+    else
+      printf '%s' "${items[$i]}" >&2
+    fi
+    printf '\n' >&2
   done
-  shift $((OPTIND - 1))
-  choices=("$@")
-  {% raw %}
-  if [ "${#choices[@]}" -eq 0 ]; then
-    printf "no choices provided\n" >&2
-    exit 1
+  local n="${#items[@]}" a_idx q_idx
+  if $single; then
+    q_idx=$n
+  else
+    a_idx=$n; q_idx=$((n + 1))
+    _cur_bol; _clear_line; printf '  ' >&2
+    if [ "$current" -eq "$a_idx" ]; then
+      _line_reverse; printf 'a)' >&2; _line_normal
+    else
+      printf 'a)' >&2
+    fi
+    printf ' all\n' >&2
   fi
-  {% endraw %}
-
-  idx=1
-  for c in "${choices[@]}"; do
-    printf "\t%s)\t%s\n" "$idx" "$c" 1>&2
-    idx=$((idx + 1))
-  done
-
-  if [ "$add_none" = true ]; then
-    printf "\tn)\tnone\n" 1>&2
+  _cur_bol; _clear_line; printf '  ' >&2
+  if [ "$current" -eq "$q_idx" ]; then
+    _line_reverse; printf 'q)' >&2; _line_normal
+  else
+    printf 'q)' >&2
   fi
-  if [ "$add_quit" = true ]; then
-    printf "\tq)\tquit\n" 1>&2
-  fi
-
-  printf "Enter choice: " 1>&2
-  read -r choice </dev/tty
-
-  local final_choices=()
-  for c in $choice; do
-    case "$c" in
-      [0-9]*)
-        c=$((c - 1))
-    esac
-    final_choices+=("$c")
-  done
-  echo "${final_choices[@]}"
+  printf ' quit\n' >&2
 }
 
+_multi_select() {
+  local single=false
+  [[ "${1-}" == "-1" ]] && { single=true; shift; }
+  local items=("$@")
+  local n="${#items[@]}"
+  local extra; $single && extra=1 || extra=2
+  local current=0 idx i key rest
+  _MENU_SELECTED=()
+  for ((i=0; i<n; i++)); do _MENU_SELECTED+=("0"); done
+
+  _cur_hide
+  _draw_menu "$single" "$current" "${items[@]}"
+
+  while true; do
+    IFS= read -rsn1 key </dev/tty
+    if [[ "$key" == $'\033' ]]; then
+      read -rsn2 -t 0.1 rest </dev/tty
+      key="$key$rest"
+    fi
+    case "$key" in
+      $'\033[A') # up
+        [ "$current" -gt 0 ] && current=$((current - 1))
+        ;;
+      $'\033[B') # down
+        [ "$current" -lt $((n + extra - 1)) ] && current=$((current + 1))
+        ;;
+      [1-9])
+        idx=$((key - 1))
+        [ "$idx" -lt "$n" ] && current=$idx
+        ;;
+      ' ')
+        local on_a=false on_q=false
+        ! $single && [ "$current" -eq "$n" ]          && on_a=true
+        $single    && [ "$current" -eq "$n" ]          && on_q=true
+        ! $single  && [ "$current" -eq $((n + 1)) ]   && on_q=true
+        if $on_q; then
+          _cur_show; return 1
+        elif $on_a; then
+          local all_on=true
+          for ((i=0; i<n; i++)); do
+            [ "${_MENU_SELECTED[$i]}" != "1" ] && { all_on=false; break; }
+          done
+          local v; $all_on && v="0" || v="1"
+          for ((i=0; i<n; i++)); do _MENU_SELECTED[$i]="$v"; done
+        elif $single; then
+          _MENU_SELECTED[$current]="1"
+          _cur_up $((n + extra))
+          _draw_menu "$single" "$current" "${items[@]}"
+          _cur_show; printf '%d\n' "$current"; return 0
+        else
+          if [ "${_MENU_SELECTED[$current]}" = "1" ]; then
+            _MENU_SELECTED[$current]="0"
+          else
+            _MENU_SELECTED[$current]="1"
+          fi
+        fi
+        ;;
+      '')
+        local on_a=false on_q=false
+        ! $single && [ "$current" -eq "$n" ]          && on_a=true
+        $single    && [ "$current" -eq "$n" ]          && on_q=true
+        ! $single  && [ "$current" -eq $((n + 1)) ]   && on_q=true
+        if $on_q; then
+          _cur_show; return 1
+        fi
+        if $single; then
+          _MENU_SELECTED[$current]="1"
+        elif $on_a; then
+          for ((i=0; i<n; i++)); do _MENU_SELECTED[$i]="1"; done
+        else
+          local any_selected=false
+          for i in "${!_MENU_SELECTED[@]}"; do
+            [ "${_MENU_SELECTED[$i]}" = "1" ] && { any_selected=true; break; }
+          done
+          if ! $any_selected && [ "$current" -lt "$n" ]; then
+            _MENU_SELECTED[$current]="1"
+          fi
+        fi
+        _cur_up $((n + extra))
+        _draw_menu "$single" "$current" "${items[@]}"
+        _cur_show
+        if $single; then
+          printf '%d\n' "$current"
+        else
+          for i in "${!_MENU_SELECTED[@]}"; do
+            [ "${_MENU_SELECTED[$i]}" = "1" ] && printf '%d ' "$i"
+          done
+          printf '\n'
+        fi
+        return 0
+        ;;
+      a|A)
+        if ! $single; then
+          local all_on=true
+          for ((i=0; i<n; i++)); do
+            [ "${_MENU_SELECTED[$i]}" != "1" ] && { all_on=false; break; }
+          done
+          local v; $all_on && v="0" || v="1"
+          for ((i=0; i<n; i++)); do _MENU_SELECTED[$i]="$v"; done
+        fi
+        ;;
+      q|Q)
+        _cur_show; return 1
+        ;;
+    esac
+    _cur_up $((n + extra))
+    _draw_menu "$single" "$current" "${items[@]}"
+  done
+}
+{% endraw %}
 
 #------------------------------------------------------------------------------
-# 05) Download Helper
+# Logging
+#------------------------------------------------------------------------------
+_debug() {
+  [ "${GETPIPE_LOG_LEVEL:-}" = "DEBUG" ] && printf '[debug] %s\n' "$*" >&2
+}
+
+#------------------------------------------------------------------------------
+# 06) Download Helper
 #------------------------------------------------------------------------------
 _urlget() {
   if command -v curl &> /dev/null; then
@@ -86,18 +201,18 @@ _urlget() {
     wget -qO- "$1" 2> /dev/null
   else
     printf "neither curl nor wget found, unable to download files\n" >&2
-    return "$_E_GENERIC_ERROR"
+    return 1
   fi
 }
 
 #------------------------------------------------------------------------------
-# 06) Overwrite Guard
+# 07) Overwrite Guard
 #------------------------------------------------------------------------------
 # Exits with 0 (skip) if the destination already exists and the user declines.
 # Skipped entirely when _FORCE='true'.
 _confirm_overwrite() {
   local dest="$1" _ow_answer
-  if [ -e "$dest" ] && [ "$_FORCE" != 'true' ]; then
+  if [ -e "$dest" ] && [ "{{ force | escape_shell }}" != 'true' ]; then
     printf "%s already exists. Overwrite? [y/N] " "$dest" >&2
     read -r _ow_answer </dev/tty
     case "$_ow_answer" in
@@ -108,10 +223,9 @@ _confirm_overwrite() {
 }
 
 #------------------------------------------------------------------------------
-# 07) Installation Prefix
+# 08) Installation Prefix
 #------------------------------------------------------------------------------
 {% if prefix and prefix != "auto" %}
-RUN_DIRECTORY={{ prefix | escape_shell }}
 {% else %}
 _detect_prefix() {
   # 1. Running as root → system-wide location
@@ -132,113 +246,163 @@ _detect_prefix() {
   # 4. Fallback: directory from which the script was invoked
   printf "%s" "$_ORIG_DIR"
 }
-RUN_DIRECTORY="$(_detect_prefix)"
 {% endif %}
 
 #------------------------------------------------------------------------------
-# 08) Asset Arrays
+# Main
 #------------------------------------------------------------------------------
-_filenames=( {% for asset in assets %}{{ asset.name | escape_shell }} {% endfor %})
-_filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% endfor %})
-_printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
+_pipe_install() {
+  if [ -n "$ZSH_VERSION" ]; then emulate -L bash; fi
+  (
+    set -euo pipefail
 
-#------------------------------------------------------------------------------
-# 09) Asset Selection
-#------------------------------------------------------------------------------
-printf "Please select one of the following:\n"
-choice="$(_ask_choices -q "${_printables[@]}")"
+    #--------------------------------------------------------------------------
+    # 03) Temporary Workspace and Exit Cleanup
+    #--------------------------------------------------------------------------
+    _ORIG_DIR="$(pwd)"
+    _TMPDIR="$(mktemp -d)"
+    _debug "workdir: $_TMPDIR"
+    cd "$_TMPDIR"
+    trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \"$_TMPDIR\"" EXIT
 
-#------------------------------------------------------------------------------
-# 10) Selection Validation
-#------------------------------------------------------------------------------
-case "$choice" in
-  q|n)
-    exit 0
-    ;;
-  [0-9]*)
-    if ! [ "$choice" -lt {% raw %}"${#_artifacts[@]}"{% endraw %} ]; then
-      printf "invalid choice: %s\n" "$choice" >&2
-      exit 100
-    fi
-    ;;
-  *)
-    printf "invalid choice: %s\n" "$choice" >&2
-    exit 100
-    ;;
-esac
+    #--------------------------------------------------------------------------
+    # 08) Installation Prefix (continued)
+    #--------------------------------------------------------------------------
+    {% if prefix and prefix != "auto" %}
+    RUN_DIRECTORY={{ prefix | escape_shell }}
+    {% else %}
+    RUN_DIRECTORY="$(_detect_prefix)"
+    {% endif %}
+    _debug "prefix: $RUN_DIRECTORY"
 
-#------------------------------------------------------------------------------
-# 11) Download and Install Dispatch
-#------------------------------------------------------------------------------
-printf "Downloading from %s to %s\n" "${_artifacts[$choice]}" "$_TMPDIR"
-_type="${_filetypes[$choice]}"
-case "$_type" in
-  "binary" | "deb installer")
-    filename="${_filenames[$choice]}"
-    saved_file="$_TMPDIR/$filename"
-    _urlget "${_artifacts[$choice]}" > "$saved_file"
+    #--------------------------------------------------------------------------
+    # 09) Asset Arrays
+    #--------------------------------------------------------------------------
+    _filenames=( {% for asset in assets %}{{ asset.name | escape_shell }} {% endfor %})
+    _filetypes=( {% for asset in assets %}{{ asset.filetype | escape_shell }} {% endfor %})
+    _printables=( {% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_shell }} {% endfor %})
 
-    if [ "$_type" = "deb installer" ]; then
-      if command -v dpkg &> /dev/null; then
-        printf "trying to install with dpkg, this may prompt for sudo\n"
-        dpkg -i "$saved_file" || sudo dpkg -i "$saved_file"
-      else
-        printf "dpkg not found, unable to install package\n" >&2
-        exit 100
-      fi
-    elif [ "$_type" = "binary" ]; then
-      chmod +x "$saved_file"
+    #--------------------------------------------------------------------------
+    # 10) Asset Selection
+    #--------------------------------------------------------------------------
+    printf "Please select one of the following:\n" >&2
+    choice="$(_multi_select -1 "${_printables[@]}")" || exit 0
+    _debug "selected: $choice"
 
-      if [ -z "$_CANONICAL_BINARY_NAME" ]; then
-        read -r -p "enter alternate binary name (default: $filename): " binary_name </dev/tty
-        binary_name="${binary_name:-$filename}"
-      else
-        binary_name="$_CANONICAL_BINARY_NAME"
-      fi
-      read -r -p "enter alternate binary directory (default: $RUN_DIRECTORY/bin): " binary_dir </dev/tty
-      binary_dir="${binary_dir:-$RUN_DIRECTORY/bin}"
-      mkdir -p "$binary_dir"
-      _confirm_overwrite "$binary_dir/$binary_name"
-      cp "$saved_file" "$binary_dir/$binary_name"
-    else
-      printf "invalid filetype: %s\n" "$_type" >&2
-      exit 100
-    fi
-    ;;
-  "tar.gz")
-    _urlget "${_artifacts[$choice]}" | tar xz
-    executable_files=(
-      $(find . -type f -executable -exec printf '{} ' \;)
-    )
-    {# raw block here to allow for the comment looking shell op #}
-    {% raw %}
-    if [ "${#executable_files[@]}" -eq 0 ]; then
-    {% endraw %}
-      printf "no executable files found in archive\n" >&2
-      exit 100
-    else
-      choices="$(_ask_choices -q "${executable_files[@]}")"
-    fi
-    for choice in $choices; do
-      case "$choice" in
-        [0-9]*)
-          mkdir -p "$RUN_DIRECTORY/bin"
-          if [ -n "$_CANONICAL_BINARY_NAME" ]; then
-            _dest_name="$_CANONICAL_BINARY_NAME"
+    #--------------------------------------------------------------------------
+    # 11) Download and Install Dispatch
+    #--------------------------------------------------------------------------
+    printf "Downloading from %s to %s\n" "${_artifacts[$choice]}" "$_TMPDIR"
+    _type="${_filetypes[$choice]}"
+    _debug "artifact: ${_artifacts[$choice]}, type: $_type"
+    case "$_type" in
+      "binary" | "deb installer")
+        filename="${_filenames[$choice]}"
+        saved_file="$_TMPDIR/$filename"
+        _urlget "${_artifacts[$choice]}" > "$saved_file"
+
+        if [ "$_type" = "deb installer" ]; then
+          if command -v dpkg &> /dev/null; then
+            printf "trying to install with dpkg, this may prompt for sudo\n"
+            dpkg -i "$saved_file" || sudo dpkg -i "$saved_file"
           else
-            _dest_name="$(basename "${executable_files[$choice]}")"
+            printf "dpkg not found, unable to install package\n" >&2
+            exit 100
           fi
-          _confirm_overwrite "$RUN_DIRECTORY/bin/$_dest_name"
-          cp "${executable_files[$choice]}" "$RUN_DIRECTORY/bin/$_dest_name"
-          ;;
-      esac
-    done
-    ;;
-  *)
-    printf "invalid filetype: %s\n" "${_filetypes[$choice]}" >&2
-    exit 100
-    ;;
-esac
+        elif [ "$_type" = "binary" ]; then
+          chmod +x "$saved_file"
+
+          if [ -n "{{ app | escape_shell }}" ]; then
+            _default_name="$(basename "{{ app | escape_shell }}")"
+          else
+            _default_name="$filename"
+          fi
+          read -r -e -i "$_default_name" -p "Binary name: " binary_name </dev/tty
+          binary_name="${binary_name:-$_default_name}"
+          read -r -e -i "$RUN_DIRECTORY/bin" -p "Install directory: " binary_dir </dev/tty
+          binary_dir="${binary_dir:-$RUN_DIRECTORY/bin}"
+          mkdir -p "$binary_dir"
+          _confirm_overwrite "$binary_dir/$binary_name"
+          cp "$saved_file" "$binary_dir/$binary_name"
+        else
+          printf "invalid filetype: %s\n" "$_type" >&2
+          exit 100
+        fi
+        ;;
+      "tar.gz")
+        _urlget "${_artifacts[$choice]}" | tar xz
+        executable_files=()
+        while IFS= read -r -d '' f; do
+          executable_files+=("$f")
+          _debug "found: $f"
+        done < <(find . -type f -executable -print0)
+
+        {# raw block here to allow for the comment looking shell op #}
+        {% raw %}
+        if [ "${#executable_files[@]}" -eq 0 ]; then
+        {% endraw %}
+          printf "no executable files found in archive\n" >&2
+          exit 100
+        {% raw %}
+        elif [ "${#executable_files[@]}" -eq 1 ]; then
+        {% endraw %}
+          choices="0"
+        else
+          printf "Select binaries to install:\n" >&2
+          choices="$(_multi_select "${executable_files[@]}")" || exit 0
+        fi
+
+        read -r -e -i "$RUN_DIRECTORY/bin" -p "Install directory: " install_dir </dev/tty
+        install_dir="${install_dir:-$RUN_DIRECTORY/bin}"
+        mkdir -p "$install_dir"
+
+        to_install=()
+        _dest_names=()
+        # TODO: currently this will use the app default name
+        #       multiple times if the user doesn't change it
+        #       we should probably do a explicit fuzzy map
+        for choice in $choices; do
+          _src_name="$(basename "${executable_files[$choice]}")"
+          if [ -n "{{ app | escape_shell }}" ]; then
+            _default_name="$(basename "{{ app | escape_shell }}")"
+          else
+            _default_name="$_src_name"
+          fi
+          read -r -e -i "$_default_name" -p "Install '$_src_name' as: " _dest_name </dev/tty
+          _dest_name="${_dest_name:-$_default_name}"
+          _dest_path="$install_dir/$_dest_name"
+          if [ -e "$_dest_path" ]; then
+            read -r -p "$_dest_path already exists. Overwrite? [y/N] " _ow </dev/tty
+            case "$_ow" in
+              [yY]|[yY][eE][sS]) to_install+=("$choice"); _dest_names+=("$_dest_name") ;;
+              *) printf "skipping %s\n" "$_dest_name" >&2 ;;
+            esac
+          else
+            to_install+=("$choice")
+            _dest_names+=("$_dest_name")
+          fi
+        done
+
+        for i in "${!to_install[@]}"; do
+          choice="${to_install[$i]}"
+          _dest_name="${_dest_names[$i]}"
+          printf "installing: ${executable_files[$choice]} -> $install_dir/$_dest_name\n" >&2
+          cp "${executable_files[$choice]}" "$install_dir/$_dest_name"
+        done
+        ;;
+      *)
+        printf "invalid filetype: %s\n" "${_filetypes[$choice]}" >&2
+        exit 100
+        ;;
+    esac
+  )
+}
+
+if [[ -n "${ZSH_VERSION-}" ]]; then
+  [[ "${(%):-%x}" == "${0}" || -z "${(%):-%x}" ]] && _pipe_install
+elif [[ -z "${BASH_SOURCE[0]-}" || "${BASH_SOURCE[0]-}" == "${0}" ]]; then
+  _pipe_install
+fi
 {% else %}
 #------------------------------------------------------------------------------
 # 1) No Assets Available
