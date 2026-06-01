@@ -93,17 +93,17 @@ _multi_select() {
       key="$key$rest"
     fi
     case "$key" in
-      $'\033[A')
+      $'\033[A') # up
         [ "$current" -gt 0 ] && current=$((current - 1))
         ;;
-      $'\033[B')
+      $'\033[B') # down
         [ "$current" -lt $((n + extra - 1)) ] && current=$((current + 1))
         ;;
       [1-9])
         idx=$((key - 1))
         [ "$idx" -lt "$n" ] && current=$idx
         ;;
-      ' '|'')
+      ' ')
         local on_a=false on_q=false
         ! $single && [ "$current" -eq "$n" ]          && on_a=true
         $single    && [ "$current" -eq "$n" ]          && on_q=true
@@ -117,17 +117,11 @@ _multi_select() {
           done
           local v; $all_on && v="0" || v="1"
           for ((i=0; i<n; i++)); do _MENU_SELECTED[$i]="$v"; done
-        elif $single || [[ "$key" == '' ]]; then
-          _cur_show
-          if $single; then
-            printf '%d\n' "$current"
-          else
-            for i in "${!_MENU_SELECTED[@]}"; do
-              [ "${_MENU_SELECTED[$i]}" = "1" ] && printf '%d ' "$i"
-            done
-            printf '\n'
-          fi
-          return 0
+        elif $single; then
+          _MENU_SELECTED[$current]="1"
+          _cur_up $((n + extra))
+          _draw_menu "$single" "$current" "${items[@]}"
+          _cur_show; printf '%d\n' "$current"; return 0
         else
           if [ "${_MENU_SELECTED[$current]}" = "1" ]; then
             _MENU_SELECTED[$current]="0"
@@ -135,6 +129,40 @@ _multi_select() {
             _MENU_SELECTED[$current]="1"
           fi
         fi
+        ;;
+      '')
+        local on_a=false on_q=false
+        ! $single && [ "$current" -eq "$n" ]          && on_a=true
+        $single    && [ "$current" -eq "$n" ]          && on_q=true
+        ! $single  && [ "$current" -eq $((n + 1)) ]   && on_q=true
+        if $on_q; then
+          _cur_show; return 1
+        fi
+        if $single; then
+          _MENU_SELECTED[$current]="1"
+        elif $on_a; then
+          for ((i=0; i<n; i++)); do _MENU_SELECTED[$i]="1"; done
+        else
+          local any_selected=false
+          for i in "${!_MENU_SELECTED[@]}"; do
+            [ "${_MENU_SELECTED[$i]}" = "1" ] && { any_selected=true; break; }
+          done
+          if ! $any_selected && [ "$current" -lt "$n" ]; then
+            _MENU_SELECTED[$current]="1"
+          fi
+        fi
+        _cur_up $((n + extra))
+        _draw_menu "$single" "$current" "${items[@]}"
+        _cur_show
+        if $single; then
+          printf '%d\n' "$current"
+        else
+          for i in "${!_MENU_SELECTED[@]}"; do
+            [ "${_MENU_SELECTED[$i]}" = "1" ] && printf '%d ' "$i"
+          done
+          printf '\n'
+        fi
+        return 0
         ;;
       a|A)
         if ! $single; then
@@ -284,12 +312,13 @@ _pipe_install() {
         elif [ "$_type" = "binary" ]; then
           chmod +x "$saved_file"
 
-          if [ -z "{{ app | escape_shell }}" ]; then
-            read -r -p "enter alternate binary name (default: $filename): " binary_name </dev/tty
-            binary_name="${binary_name:-$filename}"
+          if [ -n "{{ app | escape_shell }}" ]; then
+            _default_name="$(basename "{{ app | escape_shell }}")"
           else
-            binary_name="{{ app | escape_shell }}"
+            _default_name="$filename"
           fi
+          read -r -e -i "$_default_name" -p "Binary name: " binary_name </dev/tty
+          binary_name="${binary_name:-$_default_name}"
           read -r -e -i "$RUN_DIRECTORY/bin" -p "Install directory: " binary_dir </dev/tty
           binary_dir="${binary_dir:-$RUN_DIRECTORY/bin}"
           mkdir -p "$binary_dir"
@@ -314,33 +343,50 @@ _pipe_install() {
         {% endraw %}
           printf "no executable files found in archive\n" >&2
           exit 100
+        {% raw %}
+        elif [ "${#executable_files[@]}" -eq 1 ]; then
+        {% endraw %}
+          choices="0"
+        else
+          printf "Select binaries to install:\n" >&2
+          choices="$(_multi_select "${executable_files[@]}")" || exit 0
         fi
-
-        printf "Select binaries to install:\n" >&2
-        choices="$(_multi_select "${executable_files[@]}")" || exit 0
 
         read -r -e -i "$RUN_DIRECTORY/bin" -p "Install directory: " install_dir </dev/tty
         install_dir="${install_dir:-$RUN_DIRECTORY/bin}"
         mkdir -p "$install_dir"
 
         to_install=()
+        _dest_names=()
+        # TODO: currently this will use the app default name
+        #       multiple times if the user doesn't change it
+        #       we should probably do a explicit fuzzy map
         for choice in $choices; do
-          _dest_name="$(basename "${executable_files[$choice]}")"
+          _src_name="$(basename "${executable_files[$choice]}")"
+          if [ -n "{{ app | escape_shell }}" ]; then
+            _default_name="$(basename "{{ app | escape_shell }}")"
+          else
+            _default_name="$_src_name"
+          fi
+          read -r -e -i "$_default_name" -p "Install '$_src_name' as: " _dest_name </dev/tty
+          _dest_name="${_dest_name:-$_default_name}"
           _dest_path="$install_dir/$_dest_name"
           if [ -e "$_dest_path" ]; then
             read -r -p "$_dest_path already exists. Overwrite? [y/N] " _ow </dev/tty
             case "$_ow" in
-              [yY]|[yY][eE][sS]) to_install+=("$choice") ;;
+              [yY]|[yY][eE][sS]) to_install+=("$choice"); _dest_names+=("$_dest_name") ;;
               *) printf "skipping %s\n" "$_dest_name" >&2 ;;
             esac
           else
             to_install+=("$choice")
+            _dest_names+=("$_dest_name")
           fi
         done
 
-        for choice in "${to_install[@]}"; do
-          _dest_name="$(basename "${executable_files[$choice]}")"
-          _debug "installing: ${executable_files[$choice]} -> $install_dir/$_dest_name"
+        for i in "${!to_install[@]}"; do
+          choice="${to_install[$i]}"
+          _dest_name="${_dest_names[$i]}"
+          printf "installing: ${executable_files[$choice]} -> $install_dir/$_dest_name\n" >&2
           cp "${executable_files[$choice]}" "$install_dir/$_dest_name"
         done
         ;;
