@@ -188,6 +188,23 @@ async fn log_requests_middleware(request: Request, next: Next) -> impl IntoRespo
   response
 }
 
+fn handle_install_output(result: Result<CliInstallOutput, AppError>) -> anyhow::Result<()> {
+  match result {
+    Ok(output) => {
+      let body = match output {
+        CliInstallOutput::Script(response) => response.render_body(),
+        CliInstallOutput::Links(json) => json,
+      };
+      io::stdout().write_all(body.as_bytes())?;
+      Ok(())
+    }
+    Err(err) => {
+      eprintln!("{}", err.to_json());
+      std::process::exit(1);
+    }
+  }
+}
+
 async fn run_server(serve_args: Option<&cli::ServeArgs>) -> anyhow::Result<()> {
   // Load config (also initializes lazy static CONFIG)
   let config = &config::CONFIG;
@@ -270,34 +287,7 @@ async fn main() -> anyhow::Result<()> {
 
   match cli.command {
     Some(Commands::Script(script_cmd)) => match script_cmd {
-      ScriptCommands::Install(args) => match args.run().await {
-        Ok(output) => {
-          let body = match output {
-            CliInstallOutput::Script(response) => response.render_body(),
-            CliInstallOutput::Links(json) => json,
-          };
-          io::stdout().write_all(body.as_bytes())?;
-          Ok(())
-        }
-        Err(err) => {
-          eprintln!("{}", err.to_json());
-          std::process::exit(1);
-        }
-      },
-    },
-    Some(Commands::Install(args)) => match args.run().await {
-      Ok(output) => {
-        let body = match output {
-          CliInstallOutput::Script(response) => response.render_body(),
-          CliInstallOutput::Links(json) => json,
-        };
-        io::stdout().write_all(body.as_bytes())?;
-        Ok(())
-      }
-      Err(err) => {
-        eprintln!("{}", err.to_json());
-        std::process::exit(1);
-      }
+      ScriptCommands::Install(args) => handle_install_output(args.run().await),
     },
     Some(Commands::Completions(args)) => {
       let mut command = cli::build_command();

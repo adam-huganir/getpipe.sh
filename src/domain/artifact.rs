@@ -126,24 +126,6 @@ pub(crate) enum ScriptType {
   Lua,
 }
 
-impl ScriptType {
-  #[allow(dead_code)]
-  fn identify(input: &str) -> Option<ScriptType> {
-    let extensions = &get_extensions(input);
-    if extensions.is_empty() {
-      return None;
-    }
-    match extensions.last().unwrap().as_str() {
-      "bat" => Some(ScriptType::Bat),
-      "sh" => Some(ScriptType::Sh),
-      "ps1" => Some(ScriptType::Ps1),
-      "py" => Some(ScriptType::Python),
-      "lua" => Some(ScriptType::Lua),
-      _ => None,
-    }
-  }
-}
-
 impl Display for ScriptType {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {

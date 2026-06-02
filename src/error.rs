@@ -1,8 +1,6 @@
-use axum::Json;
 use axum::http::StatusCode;
+use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
-use serde_json::to_string;
 
 #[derive(Debug)]
 pub(crate) enum AppError {
@@ -16,13 +14,7 @@ pub(crate) enum AppError {
 
 impl AppError {
   pub(crate) fn to_json(&self) -> String {
-    let body = ErrorBody {
-      error: self.code(),
-      message: self.message(),
-    };
-    to_string(&body).unwrap_or_else(|_| {
-      "{\"error\":\"unknown\",\"message\":\"serialization failure\"}".to_string()
-    })
+    serde_json::json!({"error": self.code(), "message": self.message()}).to_string()
   }
 
   fn status_code(&self) -> StatusCode {
@@ -78,20 +70,11 @@ impl std::fmt::Display for AppError {
   }
 }
 
-#[derive(Serialize)]
-struct ErrorBody {
-  error: &'static str,
-  message: String,
-}
-
 impl IntoResponse for AppError {
   fn into_response(self) -> Response {
     let status = self.status_code();
-    let body = Json(ErrorBody {
-      error: self.code(),
-      message: self.message(),
-    });
-    (status, body).into_response()
+    let body = self.to_json();
+    (status, [(CONTENT_TYPE, "application/json")], body).into_response()
   }
 }
 

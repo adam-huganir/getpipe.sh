@@ -39,32 +39,31 @@ static OCTOCRAB: LazyLock<Arc<Octocrab>> = LazyLock::new(|| {
   )
 });
 
+fn split_owner_repo(repo: &Repo) -> Result<(String, String), AppError> {
+  let s = repo.get_github_repo()?;
+  s.split_once('/')
+    .map(|(o, r)| (o.to_string(), r.to_string()))
+    .ok_or_else(|| AppError::InvalidInput(format!("Invalid github repo path: {}", s)))
+}
+
 pub(crate) async fn get_github_download_links(
   repo: &Repo,
   target_deployment: &TargetDeployment,
   version: &str,
 ) -> Result<Vec<DownloadInfo>, AppError> {
-  let repo_string = repo.get_github_repo()?;
-  let (owner, repo_name) = repo_string
-    .split_once('/')
-    .ok_or_else(|| AppError::InvalidInput(format!("Invalid github repo path: {}", repo_string)))?;
+  let (owner, repo_name) = split_owner_repo(repo)?;
 
-  let cache_key = (
-    owner.to_string(),
-    repo_name.to_string(),
-    version.to_string(),
-  );
+  let cache_key = (owner.clone(), repo_name.clone(), version.to_string());
 
-  debug!("checking for release '{}' from {:?}", version, repo_string);
+  debug!("checking for release '{}' from {}/{}", version, owner, repo_name);
 
-  // Try to get from cache first
   let release = if let Some(cached) = RELEASE_CACHE.get(&cache_key).await {
     debug!("cache hit for {}/{} version {}", owner, repo_name, version);
     cached
   } else {
     debug!("cache miss for {}/{} version {}", owner, repo_name, version);
-    let repo = OCTOCRAB.repos(owner, repo_name);
-    let releases = repo.releases();
+    let repo_handle = OCTOCRAB.repos(&owner, &repo_name);
+    let releases = repo_handle.releases();
 
     let timeout_secs = CONFIG.github.api_timeout_seconds;
     let release = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
@@ -81,7 +80,6 @@ pub(crate) async fn get_github_download_links(
       ))
     })??;
 
-    // Store in cache
     RELEASE_CACHE.insert(cache_key, release.clone()).await;
     release
   };
@@ -156,12 +154,9 @@ pub(crate) async fn get_github_release_tags(
   repo: &Repo,
   limit: u8,
 ) -> Result<Vec<String>, AppError> {
-  let repo_string = repo.get_github_repo()?;
-  let (owner, repo_name) = repo_string
-    .split_once('/')
-    .ok_or_else(|| AppError::InvalidInput(format!("Invalid github repo path: {}", repo_string)))?;
+  let (owner, repo_name) = split_owner_repo(repo)?;
 
-  let cache_key = (owner.to_string(), repo_name.to_string());
+  let cache_key = (owner.clone(), repo_name.clone());
 
   if let Some(cached) = TAGS_CACHE.get(&cache_key).await {
     debug!("tags cache hit for {}/{}", owner, repo_name);
@@ -172,7 +167,7 @@ pub(crate) async fn get_github_release_tags(
   let timeout_secs = CONFIG.github.api_timeout_seconds;
   let page = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
     OCTOCRAB
-      .repos(owner, repo_name)
+      .repos(&owner, &repo_name)
       .releases()
       .list()
       .per_page(limit)
@@ -192,45 +187,22 @@ pub(crate) async fn get_github_release_tags(
   Ok(tags)
 }
 
-fn calc_all_widths(download_infos: &[DownloadInfo]) -> (usize, usize, usize, usize, usize) {
-  let calc_width =
-    |values: Vec<String>| -> usize { values.iter().map(String::len).max().unwrap_or(0).min(32) };
-  let name_width = calc_width(
-    download_infos
+fn calc_all_widths(infos: &[DownloadInfo]) -> (usize, usize, usize, usize, usize) {
+  let w = |f: fn(&DownloadInfo) -> String| {
+    infos
       .iter()
-      .map(|d| format!("{:?}", d.name))
-      .collect(),
-  );
-  let filetype_width = calc_width(
-    download_infos
-      .iter()
-      .map(|d| format!("{:?}", d.target.filetype.to_string()))
-      .collect(),
-  );
-  let mime_width = calc_width(
-    download_infos
-      .iter()
-      .map(|d| format!("{:?}", d.content_type.essence_str()))
-      .collect(),
-  );
-  let size_width = calc_width(
-    download_infos
-      .iter()
-      .map(|d| format!("{:.3}", d.size as f64 / (1024f64.powi(2))))
-      .collect(),
-  );
-  let deployment_width = calc_width(
-    download_infos
-      .iter()
-      .map(|d| format!("{:?}", d.target.deployment.to_string()))
-      .collect(),
-  );
+      .map(f)
+      .map(|s| s.len())
+      .max()
+      .unwrap_or(0)
+      .min(32)
+  };
   (
-    name_width,
-    filetype_width,
-    mime_width,
-    size_width,
-    deployment_width,
+    w(|d| format!("{:?}", d.name)),
+    w(|d| format!("{:?}", d.target.filetype.to_string())),
+    w(|d| format!("{:?}", d.content_type.essence_str())),
+    w(|d| format!("{:.3}", d.size as f64 / (1024f64.powi(2)))),
+    w(|d| format!("{:?}", d.target.deployment.to_string())),
   )
 }
 
