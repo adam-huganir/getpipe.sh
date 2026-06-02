@@ -39,6 +39,10 @@ static OCTOCRAB: LazyLock<Arc<Octocrab>> = LazyLock::new(|| {
   )
 });
 
+fn timeout_err(secs: u64) -> AppError {
+  AppError::UpstreamGithub(format!("GitHub API request timed out after {} seconds", secs))
+}
+
 fn split_owner_repo(repo: &Repo) -> Result<(String, String), AppError> {
   let s = repo.get_github_repo()?;
   s.split_once('/')
@@ -73,12 +77,7 @@ pub(crate) async fn get_github_download_links(
       }
     })
     .await
-    .map_err(|_| {
-      AppError::UpstreamGithub(format!(
-        "GitHub API request timed out after {} seconds",
-        timeout_secs
-      ))
-    })??;
+    .map_err(|_| timeout_err(timeout_secs))??;
 
     RELEASE_CACHE.insert(cache_key, release.clone()).await;
     release

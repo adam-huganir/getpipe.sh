@@ -41,40 +41,15 @@ impl Display for ArchiveType {
 
 impl ArchiveType {
   fn identify(input: &str) -> Option<ArchiveType> {
-    // All checks use ends_with, not contains. Order still matters: more-specific
-    // extensions must come before less-specific ones that are suffixes of them
-    // (e.g. "tar.gz" before "gz", "tar.gz" before "tar").
-    let tar_gz = ["tar.gz", "tgz"];
-    let tar_bz2 = ["tar.bz2"];
-    let tar_xz = ["tar.xz"];
-    let tar = ["tar"];
-    let gz = ["gz"];
-    let z7z = ["7z"];
-    let rar = ["rar"];
-
-    if tar_gz.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::TarGz);
-    }
-    if tar_bz2.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::TarBz2);
-    }
-    if tar_xz.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::TarXz);
-    }
-    // Bare ".tar" after all "tar.*" variants.
-    if tar.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Tar);
-    }
-    // Bare ".gz" after "tar.gz" — a ".tar.gz" also ends_with ".gz".
-    if gz.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Gzip);
-    }
-    if z7z.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::_7z);
-    }
-    if rar.iter().any(|x| input.ends_with(x)) {
-      return Some(ArchiveType::Rar);
-    }
+    // More-specific extensions before less-specific suffixes of them.
+    if input.ends_with("tar.gz") || input.ends_with("tgz") { return Some(ArchiveType::TarGz);  }
+    if input.ends_with("tar.bz2")                          { return Some(ArchiveType::TarBz2); }
+    if input.ends_with("tar.xz")                           { return Some(ArchiveType::TarXz);  }
+    if input.ends_with("tar")                              { return Some(ArchiveType::Tar);    }
+    // bare ".gz" after "tar.gz" — ".tar.gz" also ends_with ".gz"
+    if input.ends_with("gz")                               { return Some(ArchiveType::Gzip);   }
+    if input.ends_with("7z")                               { return Some(ArchiveType::_7z);    }
+    if input.ends_with("rar")                              { return Some(ArchiveType::Rar);    }
     None
   }
 }
