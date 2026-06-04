@@ -11,7 +11,7 @@ _artifacts=( {% for asset in assets %}
 
 {% raw %}
 #------------------------------------------------------------------------------
-# 04) Terminal Cursor Primitives
+# 02) Terminal Cursor Primitives
 #------------------------------------------------------------------------------
 _cur_up()      { printf '\033[%dA' "${1:-1}" >&2; }
 _cur_down()    { printf '\033[%dB' "${1:-1}" >&2; }
@@ -28,7 +28,7 @@ _line_normal()  { printf '\033[0m'  >&2; }
 _line_reverse() { printf '\033[7m'  >&2; }
 
 #------------------------------------------------------------------------------
-# 05) Multi-Select Menu
+# 03) Multi-Select Menu
 #------------------------------------------------------------------------------
 _draw_menu() {
   local single="$1" current="$2"; shift 2
@@ -185,7 +185,7 @@ _multi_select() {
 {% endraw %}
 
 #------------------------------------------------------------------------------
-# Logging
+# 04) Logging
 #------------------------------------------------------------------------------
 _debug() {
   [ "${GETPIPE_LOG_LEVEL:-}" = "DEBUG" ] && printf '[debug] %s\n' "$*" >&2
@@ -193,7 +193,7 @@ _debug() {
 }
 
 #------------------------------------------------------------------------------
-# 06) Download Helper
+# 05) Download Helper
 #------------------------------------------------------------------------------
 _urlget() {
   if command -v curl &> /dev/null; then
@@ -207,7 +207,7 @@ _urlget() {
 }
 
 #------------------------------------------------------------------------------
-# 07) Overwrite Guard
+# 06) Overwrite Guard
 #------------------------------------------------------------------------------
 # Exits with 0 (skip) if the destination already exists and the user declines.
 # Skipped entirely when _FORCE='true'.
@@ -224,7 +224,7 @@ _confirm_overwrite() {
 }
 
 #------------------------------------------------------------------------------
-# 08) Installation Prefix
+# 07) Installation Prefix
 #------------------------------------------------------------------------------
 {% if prefix and prefix != "auto" %}
 {% else %}
@@ -258,7 +258,7 @@ _pipe_install() {
     set -euo pipefail
 
     #--------------------------------------------------------------------------
-    # 03) Temporary Workspace and Exit Cleanup
+    # 08) Temporary Workspace and Exit Cleanup
     #--------------------------------------------------------------------------
     _ORIG_DIR="$(pwd)"
     _TMPDIR="$(mktemp -d)"
@@ -267,7 +267,7 @@ _pipe_install() {
     trap "[ -d \"$_TMPDIR\" ] && printf 'Removing %s\n' \"$_TMPDIR\" >&2 && rm -rf \"$_TMPDIR\"" EXIT
 
     #--------------------------------------------------------------------------
-    # 08) Installation Prefix (continued)
+    # 07) Installation Prefix (continued)
     #--------------------------------------------------------------------------
     {% if prefix and prefix != "auto" %}
     RUN_DIRECTORY={{ prefix | escape_shell }}
@@ -391,6 +391,105 @@ _pipe_install() {
           cp "${executable_files[$choice]}" "$install_dir/$_dest_name"
         done
         ;;
+      "zip")
+        filename="${_filenames[$choice]}"
+        saved_file="$_TMPDIR/$filename"
+        _urlget "${_artifacts[$choice]}" > "$saved_file"
+        _debug "downloaded: $saved_file"
+
+        if command -v unzip &>/dev/null; then
+          unzip -q "$saved_file"
+        elif command -v 7z &>/dev/null; then
+          7z x "$saved_file" >/dev/null
+        else
+          printf "neither unzip nor 7z found, unable to extract zip\n" >&2
+          exit 100
+        fi
+
+        executable_files=()
+        while IFS= read -r -d '' f; do
+          executable_files+=("$f")
+          _debug "found: $f"
+        done < <(find . -type f -executable -not -name "*.zip" -print0)
+
+        {# raw block here to allow for the comment looking shell op #}
+        {% raw %}
+        if [ "${#executable_files[@]}" -eq 0 ]; then
+        {% endraw %}
+          printf "no executable files found in archive\n" >&2
+          exit 100
+        {% raw %}
+        elif [ "${#executable_files[@]}" -eq 1 ]; then
+        {% endraw %}
+          choices="0"
+        else
+          printf "Select binaries to install:\n" >&2
+          choices="$(_multi_select "${executable_files[@]}")" || exit 0
+        fi
+
+        read -r -e -i "$RUN_DIRECTORY/bin" -p "Install directory: " install_dir </dev/tty
+        install_dir="${install_dir:-$RUN_DIRECTORY/bin}"
+        mkdir -p "$install_dir"
+
+        to_install=()
+        _dest_names=()
+        for choice in $choices; do
+          _src_name="$(basename "${executable_files[$choice]}")"
+          if [ -n "{{ app | escape_shell }}" ]; then
+            _default_name="$(basename "{{ app | escape_shell }}")"
+          else
+            _default_name="$_src_name"
+          fi
+          read -r -e -i "$_default_name" -p "Install '$_src_name' as: " _dest_name </dev/tty
+          _dest_name="${_dest_name:-$_default_name}"
+          _dest_path="$install_dir/$_dest_name"
+          if [ -e "$_dest_path" ]; then
+            read -r -p "$_dest_path already exists. Overwrite? [y/N] " _ow </dev/tty
+            case "$_ow" in
+              [yY]|[yY][eE][sS]) to_install+=("$choice"); _dest_names+=("$_dest_name") ;;
+              *) printf "skipping %s\n" "$_dest_name" >&2 ;;
+            esac
+          else
+            to_install+=("$choice")
+            _dest_names+=("$_dest_name")
+          fi
+        done
+
+        for i in "${!to_install[@]}"; do
+          choice="${to_install[$i]}"
+          _dest_name="${_dest_names[$i]}"
+          printf "installing: ${executable_files[$choice]} -> $install_dir/$_dest_name\n" >&2
+          cp "${executable_files[$choice]}" "$install_dir/$_dest_name"
+        done
+        ;;
+      "rpm installer")
+        filename="${_filenames[$choice]}"
+        saved_file="$_TMPDIR/$filename"
+        _urlget "${_artifacts[$choice]}" > "$saved_file"
+        if command -v rpm &>/dev/null; then
+          printf "trying to install with rpm, this may prompt for sudo\n"
+          rpm -i "$saved_file" || sudo rpm -i "$saved_file"
+        else
+          printf "rpm not found, unable to install package\n" >&2
+          exit 100
+        fi
+        ;;
+      "pkg installer")
+        filename="${_filenames[$choice]}"
+        saved_file="$_TMPDIR/$filename"
+        _urlget "${_artifacts[$choice]}" > "$saved_file"
+        if command -v installer &>/dev/null; then
+          printf "trying to install with macOS installer, this may prompt for sudo\n"
+          installer -pkg "$saved_file" -target / || sudo installer -pkg "$saved_file" -target /
+        else
+          printf "macOS installer command not found, unable to install package\n" >&2
+          exit 100
+        fi
+        ;;
+      "msi installer" | "exe installer")
+        printf "%s is not supported on this platform\n" "$_type" >&2
+        exit 100
+        ;;
       *)
         printf "invalid filetype: %s\n" "${_filetypes[$choice]}" >&2
         exit 100
@@ -406,7 +505,7 @@ elif [[ -z "${BASH_SOURCE[0]-}" || "${BASH_SOURCE[0]-}" == "${0}" ]]; then
 fi
 {% else %}
 #------------------------------------------------------------------------------
-# 1) No Assets Available
+# No Assets Available
 #------------------------------------------------------------------------------
 printf "no assets found\n" >&2
 exit 100

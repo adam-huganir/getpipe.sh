@@ -20,6 +20,7 @@ clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"
 comrak = { version = "0.52.0", features = ["emojis", "shortcodes"], default-features = false }
 fern = "0.7.1"
+jsonwebtoken = { version = "10.4.0", default-features = false }
 log = "0.4.27"
 mime = "0.3.17"
 moka = { version = "0.12", features = ["future"] }

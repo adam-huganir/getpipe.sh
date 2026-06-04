@@ -32,15 +32,39 @@ static TAGS_CACHE: LazyLock<Cache<TagsCacheKey, Vec<String>>> = LazyLock::new(||
 });
 
 static OCTOCRAB: LazyLock<Arc<Octocrab>> = LazyLock::new(|| {
-  Arc::new(
-    OctocrabBuilder::default()
-      .build()
-      .expect("Failed to build Octocrab client"),
-  )
+  let app_id = std::env::var("GITHUB_APP_ID").ok().and_then(|s| s.trim().parse::<u64>().ok());
+  let installation_id = std::env::var("GITHUB_APP_INSTALLATION_ID").ok().and_then(|s| s.trim().parse::<u64>().ok());
+  let app_key = std::env::var("GITHUB_APP_KEY").ok();
+
+  match (app_id, installation_id, app_key) {
+    (Some(app_id), Some(installation_id), Some(key)) => {
+      let app_client = OctocrabBuilder::new()
+        .app(
+          app_id.into(),
+          jsonwebtoken::EncodingKey::from_rsa_pem(key.as_bytes())
+            .expect("Failed to build Octocrab client, invalid private key"),
+        )
+        .build()
+        .expect("Failed to build Octocrab client");
+      Arc::new(
+        app_client
+          .installation(installation_id.into())
+          .expect("Unable to exchange installation ID for access token"),
+      )
+    }
+    _ => Arc::new(
+      OctocrabBuilder::default()
+        .build()
+        .expect("Failed to build Octocrab client"),
+    ),
+  }
 });
 
 fn timeout_err(secs: u64) -> AppError {
-  AppError::UpstreamGithub(format!("GitHub API request timed out after {} seconds", secs))
+  AppError::UpstreamGithub(format!(
+    "GitHub API request timed out after {} seconds",
+    secs
+  ))
 }
 
 fn split_owner_repo(repo: &Repo) -> Result<(String, String), AppError> {
@@ -59,7 +83,10 @@ pub(crate) async fn get_github_download_links(
 
   let cache_key = (owner.clone(), repo_name.clone(), version.to_string());
 
-  debug!("checking for release '{}' from {}/{}", version, owner, repo_name);
+  debug!(
+    "checking for release '{}' from {}/{}",
+    version, owner, repo_name
+  );
 
   let release = if let Some(cached) = RELEASE_CACHE.get(&cache_key).await {
     debug!("cache hit for {}/{} version {}", owner, repo_name, version);

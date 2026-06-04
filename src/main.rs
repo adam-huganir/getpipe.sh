@@ -89,7 +89,7 @@ async fn install_arbitrary_github_handler(
     .await
 }
 
-async fn install_handler(
+async fn install_supported_app_handler(
   Path(app): Path<String>,
   Query(mut q): Query<InstallQueryOptions>,
   headers: HeaderMap,
@@ -327,7 +327,7 @@ fn build_app(log_requests_enabled: bool) -> anyhow::Result<Router> {
       "/install/{user}/{repo}",
       get(install_arbitrary_github_handler),
     )
-    .route("/install/{app}", get(install_handler));
+    .route("/install/{app}", get(install_supported_app_handler));
 
   let mut app = Router::new()
     .route("/", get(root_handler))

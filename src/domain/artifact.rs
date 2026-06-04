@@ -23,6 +23,7 @@ pub(crate) enum ArchiveType {
   _7z,
   Rar,
   Gzip,
+  Zip,
 }
 
 impl Display for ArchiveType {
@@ -35,6 +36,7 @@ impl Display for ArchiveType {
       ArchiveType::_7z => write!(f, "7z"),
       ArchiveType::Rar => write!(f, "rar"),
       ArchiveType::Gzip => write!(f, "gz"),
+      ArchiveType::Zip => write!(f, "zip"),
     }
   }
 }
@@ -50,6 +52,7 @@ impl ArchiveType {
     if input.ends_with("gz")                               { return Some(ArchiveType::Gzip);   }
     if input.ends_with("7z")                               { return Some(ArchiveType::_7z);    }
     if input.ends_with("rar")                              { return Some(ArchiveType::Rar);    }
+    if input.ends_with("zip")                              { return Some(ArchiveType::Zip);    }
     None
   }
 }
@@ -71,7 +74,6 @@ impl InstallerType {
     }
     match extensions.last().unwrap().as_str() {
       "msi" => Some(InstallerType::Msi),
-      "exe" => Some(InstallerType::Exe),
       "deb" => Some(InstallerType::Deb),
       "rpm" => Some(InstallerType::Rpm),
       "pkg" => Some(InstallerType::Pkg),
@@ -144,6 +146,7 @@ impl Filetype {
       "application/x-xar" => Filetype::Installer(InstallerType::Pkg),
       "application/x-gtar" | "application/gzip" => Filetype::Archive(ArchiveType::TarGz),
       "application/x-ms-dos-executable" => Filetype::Binary,
+      "application/x-ms-installer" => Filetype::Installer(InstallerType::Exe),
       "application/x-sh" => Filetype::Script(ScriptType::Sh),
       _ => Filetype::Unknown,
     }
