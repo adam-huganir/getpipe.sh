@@ -166,7 +166,10 @@ impl Display for DownloadInfo {
     write!(
       f,
       "[{}]({}) for {} as a {}",
-      self.name, self.url.as_str(), self.target.deployment, self.target.filetype
+      self.name,
+      self.url.as_str(),
+      self.target.deployment,
+      self.target.filetype
     )
   }
 }

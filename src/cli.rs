@@ -126,7 +126,10 @@ impl ScriptInstallArgs {
       .as_ref()
       .map(|v| TargetArch::from(v.as_str()))
       .unwrap_or_else(host_arch);
-    let method = self.method.as_ref().map(|v| InstallMethod::from(v.as_str()));
+    let method = self
+      .method
+      .as_ref()
+      .map(|v| InstallMethod::from(v.as_str()));
     let mut query = InstallQueryOptions::new(
       None,
       self.version.clone(),
@@ -143,8 +146,9 @@ impl ScriptInstallArgs {
 
     if self.links_only {
       let supported_app = match self.target.as_slice() {
-        [app] => supported_apps::get_app(app)
-          .ok_or_else(|| AppError::UnsupportedApp(app.to_string()))?,
+        [app] => {
+          supported_apps::get_app(app).ok_or_else(|| AppError::UnsupportedApp(app.to_string()))?
+        }
         [user, repo] => {
           let name = format!("{}/{}", user, repo);
           SupportedApp::new(&name, Repo::github(&name))
@@ -152,7 +156,7 @@ impl ScriptInstallArgs {
         _ => {
           return Err(AppError::InvalidInput(
             "Expected <app> or <owner> <repo> for install target".to_string(),
-          ))
+          ));
         }
       };
       let (_, links) = installer::load_app(&query, &supported_app).await?;
@@ -167,7 +171,7 @@ impl ScriptInstallArgs {
       _ => {
         return Err(AppError::InvalidInput(
           "Expected <app> or <owner> <repo> for install target".to_string(),
-        ))
+        ));
       }
     }?;
     Ok(CliInstallOutput::Script(response))

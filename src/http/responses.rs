@@ -155,7 +155,10 @@ impl IntoResponse for ScriptResponse {
     Response::builder()
       .status(StatusCode::OK)
       .header("Content-Type", content_type)
-      .header("Content-Disposition", format!("inline; filename=\"{}\"", filename))
+      .header(
+        "Content-Disposition",
+        format!("inline; filename=\"{}\"", filename),
+      )
       .body(body.into())
       .unwrap_or_else(|_| {
         Response::builder()

@@ -44,15 +44,31 @@ impl Display for ArchiveType {
 impl ArchiveType {
   fn identify(input: &str) -> Option<ArchiveType> {
     // More-specific extensions before less-specific suffixes of them.
-    if input.ends_with("tar.gz") || input.ends_with("tgz") { return Some(ArchiveType::TarGz);  }
-    if input.ends_with("tar.bz2")                          { return Some(ArchiveType::TarBz2); }
-    if input.ends_with("tar.xz")                           { return Some(ArchiveType::TarXz);  }
-    if input.ends_with("tar")                              { return Some(ArchiveType::Tar);    }
+    if input.ends_with("tar.gz") || input.ends_with("tgz") {
+      return Some(ArchiveType::TarGz);
+    }
+    if input.ends_with("tar.bz2") {
+      return Some(ArchiveType::TarBz2);
+    }
+    if input.ends_with("tar.xz") {
+      return Some(ArchiveType::TarXz);
+    }
+    if input.ends_with("tar") {
+      return Some(ArchiveType::Tar);
+    }
     // bare ".gz" after "tar.gz" — ".tar.gz" also ends_with ".gz"
-    if input.ends_with("gz")                               { return Some(ArchiveType::Gzip);   }
-    if input.ends_with("7z")                               { return Some(ArchiveType::_7z);    }
-    if input.ends_with("rar")                              { return Some(ArchiveType::Rar);    }
-    if input.ends_with("zip")                              { return Some(ArchiveType::Zip);    }
+    if input.ends_with("gz") {
+      return Some(ArchiveType::Gzip);
+    }
+    if input.ends_with("7z") {
+      return Some(ArchiveType::_7z);
+    }
+    if input.ends_with("rar") {
+      return Some(ArchiveType::Rar);
+    }
+    if input.ends_with("zip") {
+      return Some(ArchiveType::Zip);
+    }
     None
   }
 }

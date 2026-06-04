@@ -66,13 +66,25 @@ impl TargetOs {
   pub(crate) fn identify(input: &str) -> TargetOs {
     let n = input.to_lowercase();
     let check = |pats: &[&str]| pats.iter().any(|x| n.contains(x));
-    if check(&["freebsd"])                       { return TargetOs::Freebsd; }
-    if check(&["openbsd"])                       { return TargetOs::Openbsd; }
-    if check(&["netbsd"])                        { return TargetOs::Netbsd;  }
+    if check(&["freebsd"]) {
+      return TargetOs::Freebsd;
+    }
+    if check(&["openbsd"]) {
+      return TargetOs::Openbsd;
+    }
+    if check(&["netbsd"]) {
+      return TargetOs::Netbsd;
+    }
     // mac before windows — "darwin" contains "win"
-    if check(&["mac", "macos", "osx", "darwin"]) { return TargetOs::Mac;     }
-    if check(&["win", "windows"])                { return TargetOs::Windows; }
-    if check(&["linux"])                         { return TargetOs::Linux;   }
+    if check(&["mac", "macos", "osx", "darwin"]) {
+      return TargetOs::Mac;
+    }
+    if check(&["win", "windows"]) {
+      return TargetOs::Windows;
+    }
+    if check(&["linux"]) {
+      return TargetOs::Linux;
+    }
     TargetOs::Unknown
   }
 }
@@ -144,23 +156,49 @@ impl TargetArch {
   pub(crate) fn identify(input: &str) -> TargetArch {
     let n = input.to_lowercase();
     let check = |pats: &[&str]| pats.iter().any(|x| n.contains(x));
-    if check(&["amd64", "x64", "x86_64"])            { return TargetArch::Amd64;   }
+    if check(&["amd64", "x64", "x86_64"]) {
+      return TargetArch::Amd64;
+    }
     // arm64/aarch64 before arm — "arm" is a substring of "arm64"
-    if check(&["arm64", "aarch64"])                   { return TargetArch::Arm64;   }
+    if check(&["arm64", "aarch64"]) {
+      return TargetArch::Arm64;
+    }
     // ppc64le/ppc64el before ppc — "ppc" is a substring of "ppc64"
-    if check(&["ppc64le", "ppc64el", "ppcle"])        { return TargetArch::PPCLe;   }
-    if check(&["ppc", "ppc64", "powerpc"])            { return TargetArch::PPC;     }
+    if check(&["ppc64le", "ppc64el", "ppcle"]) {
+      return TargetArch::PPCLe;
+    }
+    if check(&["ppc", "ppc64", "powerpc"]) {
+      return TargetArch::PPC;
+    }
     // mips most-specific first: mips64le → mips64 → mipsle → mips
-    if check(&["mips64le"])                           { return TargetArch::Mips64Le; }
-    if check(&["mips64"])                             { return TargetArch::Mips64;  }
-    if check(&["mipsle", "mipsel"])                   { return TargetArch::MipsLe;  }
-    if check(&["mips"])                               { return TargetArch::Mips;    }
+    if check(&["mips64le"]) {
+      return TargetArch::Mips64Le;
+    }
+    if check(&["mips64"]) {
+      return TargetArch::Mips64;
+    }
+    if check(&["mipsle", "mipsel"]) {
+      return TargetArch::MipsLe;
+    }
+    if check(&["mips"]) {
+      return TargetArch::Mips;
+    }
     // "386" is a substring of "i386"; check x86 after all mips variants
-    if check(&["x86", "i386", "i686", "x86_32", "386", "686", "ia32"]) { return TargetArch::x86; }
-    if check(&["arm"])                                { return TargetArch::Arm32;   }
-    if check(&["riscv"])                              { return TargetArch::RiscV;   }
-    if check(&["windows64", "win64", "winx64", "linux64"]) { return TargetArch::Amd64; }
-    if check(&["windows32", "win32", "winx86", "linux32"]) { return TargetArch::x86;  }
+    if check(&["x86", "i386", "i686", "x86_32", "386", "686", "ia32"]) {
+      return TargetArch::x86;
+    }
+    if check(&["arm"]) {
+      return TargetArch::Arm32;
+    }
+    if check(&["riscv"]) {
+      return TargetArch::RiscV;
+    }
+    if check(&["windows64", "win64", "winx64", "linux64"]) {
+      return TargetArch::Amd64;
+    }
+    if check(&["windows32", "win32", "winx86", "linux32"]) {
+      return TargetArch::x86;
+    }
     TargetArch::Unknown
   }
 }

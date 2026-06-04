@@ -32,8 +32,12 @@ static TAGS_CACHE: LazyLock<Cache<TagsCacheKey, Vec<String>>> = LazyLock::new(||
 });
 
 static OCTOCRAB: LazyLock<Arc<Octocrab>> = LazyLock::new(|| {
-  let app_id = std::env::var("GITHUB_APP_ID").ok().and_then(|s| s.trim().parse::<u64>().ok());
-  let installation_id = std::env::var("GITHUB_APP_INSTALLATION_ID").ok().and_then(|s| s.trim().parse::<u64>().ok());
+  let app_id = std::env::var("GITHUB_APP_ID")
+    .ok()
+    .and_then(|s| s.trim().parse::<u64>().ok());
+  let installation_id = std::env::var("GITHUB_APP_INSTALLATION_ID")
+    .ok()
+    .and_then(|s| s.trim().parse::<u64>().ok());
   let app_key = std::env::var("GITHUB_APP_KEY").ok();
 
   match (app_id, installation_id, app_key) {
