@@ -20,16 +20,6 @@ pub(crate) fn validate_github_path_segment(segment: &str, name: &str) -> Result<
     )));
   }
 
-  // Check for path traversal attempts
-  if segment.contains("..") || segment.contains('/') || segment.contains('\\') {
-    return Err(AppError::InvalidInput(format!(
-      "{} contains invalid characters",
-      name
-    )));
-  }
-
-  // GitHub usernames and repos can only contain alphanumeric, hyphens, underscores, and dots
-  // but dots cannot be used for path traversal
   if !segment
     .chars()
     .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
@@ -40,7 +30,6 @@ pub(crate) fn validate_github_path_segment(segment: &str, name: &str) -> Result<
     )));
   }
 
-  // Additional safety: reject segments that start with a dot
   if segment.starts_with('.') {
     return Err(AppError::InvalidInput(format!(
       "{} cannot start with a dot",
@@ -49,6 +38,12 @@ pub(crate) fn validate_github_path_segment(segment: &str, name: &str) -> Result<
   }
 
   Ok(())
+}
+
+async fn fetch_tags_with_latest(repo: &Repo) -> Vec<String> {
+  let mut tags = get_github_release_tags(repo, 20).await.unwrap_or_default();
+  tags.insert(0, "latest".to_string());
+  tags
 }
 
 pub(crate) async fn build_supported_install_script(
@@ -72,11 +67,7 @@ pub(crate) async fn build_supported_install_script(
   );
 
   if html {
-    let mut tags = get_github_release_tags(&supported_app.repo, 20)
-      .await
-      .unwrap_or_default();
-    tags.insert(0, "latest".to_string());
-    response = response.with_tags(tags);
+    response = response.with_tags(fetch_tags_with_latest(&supported_app.repo).await);
   }
 
   Ok(response)
@@ -92,7 +83,7 @@ pub(crate) async fn build_arbitrary_github_install_script(
   validate_github_path_segment(repo, "repo")?;
 
   let app_name = format!("{}/{}", user, repo);
-  let target_app = SupportedApp::new(&app_name, Repo::github(&app_name), "github");
+  let target_app = SupportedApp::new(&app_name, Repo::github(&app_name));
 
   query.set_app(app_name);
   let (target, links) = load_app(query, &target_app).await?;
@@ -102,11 +93,7 @@ pub(crate) async fn build_arbitrary_github_install_script(
     ScriptResponse::new(format!("install.{}", extension), script, query.inline, html);
 
   if html {
-    let mut tags = get_github_release_tags(&target_app.repo, 20)
-      .await
-      .unwrap_or_default();
-    tags.insert(0, "latest".to_string());
-    response = response.with_tags(tags);
+    response = response.with_tags(fetch_tags_with_latest(&target_app.repo).await);
   }
 
   Ok(response)
@@ -116,13 +103,11 @@ pub(crate) async fn load_app(
   query: &InstallQueryOptions,
   supported_app: &SupportedApp,
 ) -> Result<(TargetDeployment, Vec<DownloadInfo>), AppError> {
-  let arch = query.arch.clone();
-  let os = query.os.clone();
-  let version = query.version.clone();
-  let target_deployment = TargetDeployment::new(os, arch);
+  let target_deployment = TargetDeployment::new(query.os.clone(), query.arch.clone());
   debug!("target_deployment loaded: {:#?}", target_deployment);
 
-  let links = get_github_download_links(&supported_app.repo, &target_deployment, &version).await?;
+  let links =
+    get_github_download_links(&supported_app.repo, &target_deployment, &query.version).await?;
   if links.is_empty() {
     return Err(AppError::NoMatchingAssets {
       repo: supported_app.shortname.clone(),

@@ -77,11 +77,31 @@ fn build() -> Result<()> {
 
 fn dev() -> Result<()> {
   println!("🚀 Starting development server (hot-reload enabled)...");
-  run_command_with_env(
-    "cargo",
-    &["run", "--features", "hot-reload"],
-    &[("LOG_LEVEL", "debug"), ("LOG_REQUESTS", "true")],
-  )?;
+  let secrets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    .parent()
+    .unwrap()
+    .join("secrets");
+  let read_secret = |name: &str| -> Option<String> {
+    std::fs::read_to_string(secrets_dir.join(name))
+      .ok()
+      .map(|s| s.trim().to_string())
+  };
+  let app_id = read_secret("GITHUB_APP_ID");
+  let installation_id = read_secret("GITHUB_APP_INSTALLATION_ID");
+  let app_key = read_secret("GITHUB_APP_KEY");
+
+  let mut env_vars: Vec<(&str, String)> = vec![
+    ("LOG_LEVEL", "debug".to_string()),
+    ("LOG_REQUESTS", "true".to_string()),
+  ];
+  if let (Some(id), Some(inst), Some(key)) = (app_id, installation_id, app_key) {
+    env_vars.push(("GITHUB_APP_ID", id));
+    env_vars.push(("GITHUB_APP_INSTALLATION_ID", inst));
+    env_vars.push(("GITHUB_APP_KEY", key));
+  }
+
+  let env_refs: Vec<(&str, &str)> = env_vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+  run_command_with_env("cargo", &["run", "--features", "hot-reload"], &env_refs)?;
   Ok(())
 }
 

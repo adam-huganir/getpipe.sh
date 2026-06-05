@@ -1,325 +1,404 @@
 #requires -version 3.0
-
-#{# template engine Tera #}
-
-#------------------------------------------------------------------------------
-# 01) Runtime Setup
-#------------------------------------------------------------------------------
+{# template engine Tera #}
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 {% if (assets | length > 0) %}
-$_ORIG_DIR = $PWD.Path
-$_FORCE = {{ force | escape_ps1 }}
-$_CANONICAL_BINARY_NAME = {{ app | escape_ps1 }}
-
-$_E_GENERIC_ERROR = 1
+$OrigDir         = $PWD.Path
+$Force           = {{ force | escape_ps1 }}
+$App             = {{ app | escape_ps1 }}
+$DebugPreference = if ($env:GETPIPE_LOG_LEVEL -eq 'DEBUG') { 'Continue' } else { 'SilentlyContinue' }
 
 #------------------------------------------------------------------------------
-# 02) Temporary Workspace and Exit Cleanup
+# 01) Matching Artifacts
 #------------------------------------------------------------------------------
-$_TMPDIR = (New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }).FullName
-Set-Location $_TMPDIR
+$Urls = @({% for asset in assets %}{{ asset.url | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
 
-$cleanup = {
-    if (Test-Path $_TMPDIR) {
-        [Console]::Error.WriteLine("Removing $_TMPDIR")
-        Remove-Item $_TMPDIR -Recurse -Force -ErrorAction SilentlyContinue
+{% raw %}
+#------------------------------------------------------------------------------
+# 02) Terminal Cursor Primitives
+#------------------------------------------------------------------------------
+$Esc = [char]27
+function Move-CursorUp      { param([int]$n = 1); [Console]::Error.Write("$Esc[$($n)A") }
+function Move-CursorDown    { param([int]$n = 1); [Console]::Error.Write("$Esc[$($n)B") }
+function Move-CursorForward { param([int]$n = 1); [Console]::Error.Write("$Esc[$($n)C") }
+function Move-CursorBack    { param([int]$n = 1); [Console]::Error.Write("$Esc[$($n)D") }
+function Set-CursorLineStart { [Console]::Error.Write("$Esc[1G")   }
+function Save-CursorPosition    { [Console]::Error.Write("$Esc[s")    }
+function Restore-CursorPosition { [Console]::Error.Write("$Esc[u")    }
+function Hide-Cursor        { [Console]::Error.Write("$Esc[?25l") }
+function Show-Cursor        { [Console]::Error.Write("$Esc[?25h") }
+function Clear-ConsoleLine  { [Console]::Error.Write("$Esc[2K")   }
+function Set-StyleBold      { [Console]::Error.Write("$Esc[1m") }
+function Set-StyleNormal    { [Console]::Error.Write("$Esc[0m") }
+function Set-StyleReverse   { [Console]::Error.Write("$Esc[7m") }
+
+#------------------------------------------------------------------------------
+# 03) Multi-Select Menu
+#------------------------------------------------------------------------------
+function Show-Menu {
+    param([bool]$Single, [int]$Current, [string[]]$Items)
+    $n     = $Items.Count
+    $width = "$n".Length
+    for ($i = 0; $i -lt $n; $i++) {
+        Set-CursorLineStart; Clear-ConsoleLine
+        [Console]::Error.Write("  ")
+        $label = ("{0,$width}" -f ($i + 1)) + ")"
+        if ($i -eq $Current) { Set-StyleReverse; [Console]::Error.Write($label); Set-StyleNormal }
+        else                  { [Console]::Error.Write($label) }
+        [Console]::Error.Write(" ")
+        if ($script:MenuSelected[$i] -eq 1) { Set-StyleReverse; [Console]::Error.Write($Items[$i]); Set-StyleNormal }
+        else                                 { [Console]::Error.Write($Items[$i]) }
+        [Console]::Error.Write("`n")
     }
-    Set-Location $_ORIG_DIR
+    if (-not $Single) {
+        Set-CursorLineStart; Clear-ConsoleLine; [Console]::Error.Write("  ")
+        if ($Current -eq $n) { Set-StyleReverse; [Console]::Error.Write("a)"); Set-StyleNormal } else { [Console]::Error.Write("a)") }
+        [Console]::Error.Write(" all`n")
+    }
+    $qIdx = if ($Single) { $n } else { $n + 1 }
+    Set-CursorLineStart; Clear-ConsoleLine; [Console]::Error.Write("  ")
+    if ($Current -eq $qIdx) { Set-StyleReverse; [Console]::Error.Write("q)"); Set-StyleNormal } else { [Console]::Error.Write("q)") }
+    [Console]::Error.Write(" quit`n")
 }
 
-Register-EngineEvent PowerShell.Exiting -Action $cleanup | Out-Null
-trap { & $cleanup; break }
+function Invoke-MultiSelect {
+    param([switch]$Single, [string[]]$Items)
+    $n       = $Items.Count
+    $extra   = if ($Single) { 1 } else { 2 }
+    $current = 0
+    $script:MenuSelected = @(0) * $n
 
-#------------------------------------------------------------------------------
-# 03) Interactive Choice Prompt
-#------------------------------------------------------------------------------
-function Get-UserChoice {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Choices,
-        [switch]$AllowNone,
-        [switch]$AllowQuit
-    )
+    Hide-Cursor
+    Show-Menu -Single ([bool]$Single) -Current $current -Items $Items
 
-    if ($Choices.Count -eq 0) {
-        [Console]::Error.WriteLine("no choices provided")
-        exit 1
-    }
+    while ($true) {
+        $key  = [Console]::ReadKey($true)
+        $ch   = $key.KeyChar
+        $onA  = (-not $Single) -and ($current -eq $n)
+        $onQ  = ($Single -and $current -eq $n) -or ((-not $Single) -and $current -eq ($n + 1))
 
-    $idx = 1
-    foreach ($choice in $Choices) {
-        Write-Host "`t$idx)`t$choice"
-        $idx++
-    }
-
-    if ($AllowNone) {
-        Write-Host "`tn)`tnone"
-    }
-    if ($AllowQuit) {
-        Write-Host "`tq)`tquit"
-    }
-
-    do {
-        $userInput = Read-Host "Enter choice"
-
-        if ($AllowQuit -and ($userInput -eq "q" -or $userInput -eq "quit")) {
-            return "q"
-        }
-        if ($AllowNone -and ($userInput -eq "n" -or $userInput -eq "none")) {
-            return "n"
-        }
-
-        $choiceNum = 0
-        if ([int]::TryParse($userInput, [ref]$choiceNum)) {
-            if ($choiceNum -ge 1 -and $choiceNum -le $Choices.Count) {
-                return ($choiceNum - 1)
+        if ($key.Key -eq [ConsoleKey]::UpArrow) {
+            if ($current -gt 0) { $current-- }
+        } elseif ($key.Key -eq [ConsoleKey]::DownArrow) {
+            if ($current -lt ($n + $extra - 1)) { $current++ }
+        } elseif ($ch -ge '1' -and $ch -le '9') {
+            $idx = [int][string]$ch - 1
+            if ($idx -lt $n) { $current = $idx }
+        } elseif ($key.Key -eq [ConsoleKey]::Spacebar) {
+            if ($onQ) {
+                Show-Cursor; return $null
+            } elseif ($onA) {
+                $v = if ($script:MenuSelected -notcontains 0) { 0 } else { 1 }
+                for ($i = 0; $i -lt $n; $i++) { $script:MenuSelected[$i] = $v }
+            } elseif ($Single) {
+                $script:MenuSelected[$current] = 1
+                Move-CursorUp ($n + $extra)
+                Show-Menu -Single ([bool]$Single) -Current $current -Items $Items
+                Show-Cursor; return $current
+            } else {
+                $script:MenuSelected[$current] = if ($script:MenuSelected[$current] -eq 1) { 0 } else { 1 }
             }
+        } elseif ($key.Key -eq [ConsoleKey]::Enter) {
+            if ($onQ) { Show-Cursor; return $null }
+            if ($Single) {
+                $script:MenuSelected[$current] = 1
+            } elseif ($onA) {
+                for ($i = 0; $i -lt $n; $i++) { $script:MenuSelected[$i] = 1 }
+            } else {
+                if (-not ($script:MenuSelected -contains 1) -and $current -lt $n) {
+                    $script:MenuSelected[$current] = 1
+                }
+            }
+            Move-CursorUp ($n + $extra)
+            Show-Menu -Single ([bool]$Single) -Current $current -Items $Items
+            Show-Cursor
+            if ($Single) { return $current }
+            return @(0..($n - 1) | Where-Object { $script:MenuSelected[$_] -eq 1 })
+        } elseif ($ch -eq 'a' -or $ch -eq 'A') {
+            if (-not $Single) {
+                $v = if ($script:MenuSelected -notcontains 0) { 0 } else { 1 }
+                for ($i = 0; $i -lt $n; $i++) { $script:MenuSelected[$i] = $v }
+            }
+        } elseif ($ch -eq 'q' -or $ch -eq 'Q') {
+            Show-Cursor; return $null
         }
 
-        Write-Host "Invalid choice. Please try again." -ForegroundColor Red
+        Move-CursorUp ($n + $extra)
+        Show-Menu -Single ([bool]$Single) -Current $current -Items $Items
+    }
+}
+
+function Invoke-MultiSelectNumbered {
+    param([switch]$Single, [string[]]$Items)
+    $n = $Items.Count
+    for ($i = 0; $i -lt $n; $i++) { Write-Host "  $($i + 1)) $($Items[$i])" }
+    if (-not $Single) { Write-Host "  a) all" }
+    Write-Host "  q) quit"
+    do {
+        $prompt = if ($Single) { "Enter choice" } else { "Enter choices (space-separated)" }
+        $raw = (Read-Host $prompt).Trim()
+        if ($raw -eq 'q' -or $raw -eq 'Q') { return $null }
+        if (-not $Single -and ($raw -eq 'a' -or $raw -eq 'A')) { return @(0..($n - 1)) }
+        $valid = $true; $indices = @()
+        foreach ($token in ($raw -split '\s+')) {
+            $num = 0
+            if ([int]::TryParse($token, [ref]$num) -and $num -ge 1 -and $num -le $n) {
+                $indices += $num - 1
+                if ($Single) { break }
+            } else { $valid = $false; break }
+        }
+        if ($valid -and $indices.Count -gt 0) { return @($indices) }
+        Write-Host "Invalid input. Try again."
     } while ($true)
 }
 
 #------------------------------------------------------------------------------
-# 04) Download Helper
+# 05) Download Helper
 #------------------------------------------------------------------------------
-function Get-WebContent {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Url,
-        [string]$OutFile
-    )
-
+function Get-RemoteFile {
+    param([string]$Url, [string]$OutFile = "")
     try {
         if ($OutFile) {
             Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
             return $true
-        } else {
-            return (Invoke-WebRequest -Uri $Url -UseBasicParsing -ErrorAction Stop).Content
         }
-    }
-    catch {
-        [Console]::Error.WriteLine("Failed to download from $Url`: $_")
-        if ($OutFile) {
-            return $false
-        }
-        return $null
+        return (Invoke-WebRequest -Uri $Url -UseBasicParsing -ErrorAction Stop).Content
+    } catch {
+        Write-Host "Failed to download from ${Url}: $_"
+        if ($OutFile) { return $false } else { return $null }
     }
 }
 
 #------------------------------------------------------------------------------
-# 05) Overwrite Guard
+# 06) Overwrite Guard
 #------------------------------------------------------------------------------
+# Returns $false if the user declines; caller should return/continue.
 function Confirm-Overwrite {
-    param([string]$Destination)
-    if ((Test-Path $Destination) -and ($_FORCE -ne 'true')) {
-        $answer = Read-Host "$Destination already exists. Overwrite? [y/N]"
+    param([string]$Dest)
+    if ((Test-Path $Dest) -and ($Force -ne 'true')) {
+        $answer = Read-Host "$Dest already exists. Overwrite? [y/N]"
         if ($answer -notmatch '^[yY]') {
             Write-Host "skipping installation"
-            exit 0
+            return $false
         }
     }
+    return $true
 }
 
+{% endraw %}
 #------------------------------------------------------------------------------
-# 06) Installation Prefix
+# 07) Installation Prefix
 #------------------------------------------------------------------------------
-{% if prefix and prefix != "auto" %}
-$RUN_DIRECTORY = {{ prefix | escape_ps1 }}
-{% else %}
-function Get-AutoPrefix {
-    # 1. Admin → system-wide ProgramFiles
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($isAdmin) {
-        return $env:ProgramFiles
+# Helper: select and install executables found in the current directory after
+# archive extraction. Returns $false if the user cancelled the selection.
+function Install-ArchiveContents {
+    param([string]$InstallPrefix, [bool]$IsInteractive)
+
+    $ExeFiles = @(Get-ChildItem -Recurse -File -Filter "*.exe" | Select-Object -ExpandProperty FullName)
+    if ($ExeFiles.Count -gt 0) {
+        $ExecutableFiles = $ExeFiles
+    } else {
+        $Candidates = @(Get-ChildItem -Recurse -File | Where-Object { $_.Extension -eq "" } | Select-Object -ExpandProperty FullName)
+        if ($App) {
+            $Named = @($Candidates | Where-Object { (Split-Path $_ -Leaf) -eq $App })
+            $ExecutableFiles = if ($Named.Count -gt 0) { $Named } else { $Candidates }
+        } else {
+            $ExecutableFiles = $Candidates
+        }
     }
-    # 2. Per-user Programs folder exists → use it
-    $localPrograms = Join-Path $env:LOCALAPPDATA "Programs"
-    if (Test-Path $localPrograms) {
-        return $localPrograms
+
+    foreach ($f in $ExecutableFiles) { Write-Debug "found: $f" }
+
+    if ($ExecutableFiles.Count -eq 0) {
+        throw "no executable files found in archive"
+    } elseif ($ExecutableFiles.Count -eq 1) {
+        $SelectedIndices = @(0)
+    } else {
+        Write-Host "Select binaries to install:"
+        $Result = if ($IsInteractive) { Invoke-MultiSelect -Items $ExecutableFiles }
+                  else                { Invoke-MultiSelectNumbered -Items $ExecutableFiles }
+        if ($null -eq $Result) { return $false }
+        $SelectedIndices = @($Result)
     }
-    # 3. Fallback: directory from which the script was invoked
-    return $_ORIG_DIR
+
+    $DefaultDir = Join-Path $InstallPrefix "bin"
+    $InstallDir = (Read-Host "Install directory [$DefaultDir]").Trim()
+    if (-not $InstallDir) { $InstallDir = $DefaultDir }
+    if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
+
+    foreach ($i in $SelectedIndices) {
+        $SrcFile     = $ExecutableFiles[$i]
+        $SrcName     = Split-Path $SrcFile -Leaf
+        $DefaultName = if ($App) { Split-Path $App -Leaf } else { $SrcName }
+        $DestName    = (Read-Host "Install '$SrcName' as [$DefaultName]").Trim()
+        if (-not $DestName) { $DestName = $DefaultName }
+        $DestPath = Join-Path $InstallDir $DestName
+        if (-not (Confirm-Overwrite $DestPath)) { continue }
+        Copy-Item $SrcFile $DestPath -Force
+        Write-Host "Installed $DestName to $DestPath"
+        Write-Debug "installed: $SrcFile -> $DestPath"
+    }
+    return $true
 }
-$RUN_DIRECTORY = Get-AutoPrefix
+
+
+{% if prefix and prefix != "auto" %}
+{% else %}
+function Get-InstallPrefix {
+    $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($IsAdmin) { return $env:ProgramFiles }
+    $LocalPrograms = Join-Path $env:LOCALAPPDATA "Programs"
+    if (Test-Path $LocalPrograms) { return $LocalPrograms }
+    return $OrigDir
+}
 {% endif %}
 
 #------------------------------------------------------------------------------
-# 07) Rendered Asset Arrays
+# Main
 #------------------------------------------------------------------------------
-$_urls = @({% for asset in assets %}{{ asset.url | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
-$_filenames = @({% for asset in assets %}{{ asset.name | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
-$_filetypes = @({% for asset in assets %}{{ asset.filetype | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
-$_printables = @({% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+function Invoke-PipeInstall {
+    #--------------------------------------------------------------------------
+    # 08) Temporary Workspace and Exit Cleanup
+    #--------------------------------------------------------------------------
+    $TmpDir = [IO.Path]::GetTempFileName()
+    Remove-Item $TmpDir -Force
+    New-Item -ItemType Directory -Path $TmpDir | Out-Null
+    Write-Debug "workdir: $TmpDir"
+    Push-Location $TmpDir
+    try {
+        #----------------------------------------------------------------------
+        # 07) Installation Prefix (continued)
+        #----------------------------------------------------------------------
+{% if prefix and prefix != "auto" %}
+        $InstallPrefix = {{ prefix | escape_ps1 }}
+{% else %}
+        $InstallPrefix = Get-InstallPrefix
+{% endif %}
+        Write-Debug "prefix: $InstallPrefix"
 
-#------------------------------------------------------------------------------
-# 08) Asset Selection
-#------------------------------------------------------------------------------
-Write-Host "Please select one of the following:"
-$choice = Get-UserChoice -Choices $_printables -AllowQuit
+        #----------------------------------------------------------------------
+        # 09) Asset Arrays
+        #----------------------------------------------------------------------
+        $Filenames  = @({% for asset in assets %}{{ asset.name | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+        $Filetypes  = @({% for asset in assets %}{{ asset.filetype | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
+        $Printables = @({% for asset in assets %}{{ asset.name ~ " (" ~ asset.filetype ~ ")" | escape_ps1 }}{% if not loop.last %}, {% endif %}{% endfor %})
 
-#------------------------------------------------------------------------------
-# 09) Selection Validation
-#------------------------------------------------------------------------------
-if ($choice -eq "q" -or $choice -eq "n") {
-    exit 0
-}
+        #----------------------------------------------------------------------
+        # 10) Asset Selection
+        #----------------------------------------------------------------------
+        Write-Host "Please select one of the following:"
+        $IsInteractive = -not [Console]::IsInputRedirected -and -not [Console]::IsErrorRedirected
+        $Choice = if ($IsInteractive) { Invoke-MultiSelect -Single -Items $Printables }
+                  else                { Invoke-MultiSelectNumbered -Single -Items $Printables }
+        if ($null -eq $Choice) { return }
+        Write-Debug "selected: $Choice"
 
-if ($choice -lt 0 -or $choice -ge $_urls.Count) {
-    [Console]::Error.WriteLine("invalid choice: $choice")
-    exit 100
-}
+        #----------------------------------------------------------------------
+        # 11) Download and Install Dispatch
+        #----------------------------------------------------------------------
+        $FileType = $Filetypes[$Choice]
+        Write-Debug "artifact: $($Urls[$Choice]), type: $FileType"
+        Write-Host "Downloading from $($Urls[$Choice]) to $TmpDir"
 
-#------------------------------------------------------------------------------
-# 10) Download and Install Dispatch
-#------------------------------------------------------------------------------
-Write-Host "Downloading from $($_urls[$choice]) to $_TMPDIR"
-$_type = $_filetypes[$choice]
+        switch ($FileType) {
+            "binary" {
+                $Filename   = $Filenames[$Choice]
+                $SavedFile  = Join-Path $TmpDir $Filename
+                if (-not (Get-RemoteFile $Urls[$Choice] $SavedFile)) {
+                    throw "failed downloading binary asset"
+                }
+                Write-Debug "downloaded: $SavedFile"
 
-switch ($_type) {
-    "binary" {
-        $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR $filename
-        if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
-            [Console]::Error.WriteLine("failed downloading binary asset")
-            exit 100
-        }
+                $DefaultName = if ($App) { Split-Path $App -Leaf } else { $Filename }
+                $BinaryName  = (Read-Host "Binary name [$DefaultName]").Trim()
+                if (-not $BinaryName) { $BinaryName = $DefaultName }
 
-        if ([string]::IsNullOrWhiteSpace($_CANONICAL_BINARY_NAME)) {
-            $binary_name = Read-Host "enter alternate binary name (default: $filename)"
-            if ([string]::IsNullOrWhiteSpace($binary_name)) {
-                $binary_name = $filename
+                $DefaultDir = Join-Path $InstallPrefix "bin"
+                $BinaryDir  = (Read-Host "Install directory [$DefaultDir]").Trim()
+                if (-not $BinaryDir) { $BinaryDir = $DefaultDir }
+
+                if (-not (Test-Path $BinaryDir)) { New-Item -ItemType Directory -Path $BinaryDir -Force | Out-Null }
+                $DestPath = Join-Path $BinaryDir $BinaryName
+                if (-not (Confirm-Overwrite $DestPath)) { return }
+                Copy-Item $SavedFile $DestPath -Force
+                Write-Host "Installed $BinaryName to $DestPath"
             }
-        }
-        else {
-            $binary_name = $_CANONICAL_BINARY_NAME
-        }
-
-        $default_bin_dir = Join-Path $RUN_DIRECTORY "bin"
-        $binary_dir = Read-Host "enter alternate binary directory (default: $default_bin_dir)"
-        if ([string]::IsNullOrWhiteSpace($binary_dir)) {
-            $binary_dir = $default_bin_dir
-        }
-        if (-not (Test-Path $binary_dir)) {
-            New-Item -ItemType Directory -Path $binary_dir -Force | Out-Null
-        }
-
-        $dest_path = Join-Path $binary_dir $binary_name
-        Confirm-Overwrite $dest_path
-        Copy-Item $saved_file $dest_path -Force
-        Write-Host "Installed $binary_name to $dest_path"
-    }
-    "deb installer" {
-        [Console]::Error.WriteLine("deb installer is not supported on Windows")
-        exit 100
-    }
-    "rpm installer" {
-        [Console]::Error.WriteLine("rpm installer is not supported on Windows")
-        exit 100
-    }
-    "pkg installer" {
-        [Console]::Error.WriteLine("pkg installer is not supported on Windows")
-        exit 100
-    }
-    "msi installer" {
-        $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR $filename
-        if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
-            [Console]::Error.WriteLine("failed downloading msi installer")
-            exit 100
-        }
-        Write-Host "Launching MSI installer..."
-        Start-Process msiexec.exe -ArgumentList @("/i", $saved_file) -Wait
-    }
-    "exe installer" {
-        $filename = $_filenames[$choice]
-        $saved_file = Join-Path $_TMPDIR $filename
-        if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $saved_file)) {
-            [Console]::Error.WriteLine("failed downloading exe installer")
-            exit 100
-        }
-        Write-Host "Launching EXE installer..."
-        Start-Process -FilePath $saved_file -Wait
-    }
-    "tar.gz" {
-        $filename = $_filenames[$choice]
-
-        # Download and extract tar.gz
-        $archive_path = Join-Path $_TMPDIR $filename
-        if (-not (Get-WebContent -Url $_urls[$choice] -OutFile $archive_path)) {
-            [Console]::Error.WriteLine("failed downloading tar.gz archive")
-            exit 100
-        }
-
-        # Extract using tar (available in Windows 10 1803+) or 7-Zip if available
-        if (Get-Command tar -ErrorAction SilentlyContinue) {
-            tar -xzf $archive_path
-        }
-        elseif (Get-Command 7z -ErrorAction SilentlyContinue) {
-            7z x $archive_path
-            $tar_file = $archive_path -replace '\.gz$', ''
-            if (Test-Path $tar_file) {
-                7z x $tar_file
-                Remove-Item $tar_file -Force
+            "deb installer" {
+                throw "deb installer is not supported on Windows"
             }
-        }
-        else {
-            [Console]::Error.WriteLine("No extraction tool found. Please install tar or 7-Zip")
-            exit 100
-        }
-
-        # Find executable files: prefer .exe, fall back to extensionless files.
-        # When a canonical binary name is known, narrow extensionless candidates to
-        # files whose leaf name matches it.
-        $exe_files = @(Get-ChildItem -Recurse -File -Filter "*.exe" | ForEach-Object { $_.FullName })
-        if ($exe_files.Count -gt 0) {
-            $executable_files = $exe_files
-        } else {
-            $candidates = @(Get-ChildItem -Recurse -File | Where-Object { $_.Extension -eq "" } | ForEach-Object { $_.FullName })
-            if (-not [string]::IsNullOrWhiteSpace($_CANONICAL_BINARY_NAME)) {
-                $named = @($candidates | Where-Object { [System.IO.Path]::GetFileName($_) -eq $_CANONICAL_BINARY_NAME })
-                $executable_files = if ($named.Count -gt 0) { $named } else { $candidates }
-            } else {
-                $executable_files = $candidates
+            "rpm installer" {
+                throw "rpm installer is not supported on Windows"
             }
-        }
+            "pkg installer" {
+                throw "pkg installer is not supported on Windows"
+            }
+            "msi installer" {
+                $Filename  = $Filenames[$Choice]
+                $SavedFile = Join-Path $TmpDir $Filename
+                if (-not (Get-RemoteFile $Urls[$Choice] $SavedFile)) {
+                    throw "failed downloading msi installer"
+                }
+                Write-Debug "downloaded: $SavedFile"
+                Write-Host "Launching MSI installer..."
+                Start-Process msiexec.exe -ArgumentList @("/i", $SavedFile) -Wait
+            }
+            "exe installer" {
+                $Filename  = $Filenames[$Choice]
+                $SavedFile = Join-Path $TmpDir $Filename
+                if (-not (Get-RemoteFile $Urls[$Choice] $SavedFile)) {
+                    throw "failed downloading exe installer"
+                }
+                Write-Debug "downloaded: $SavedFile"
+                Write-Host "Launching EXE installer..."
+                Start-Process -FilePath $SavedFile -Wait
+            }
+            "tar.gz" {
+                $Filename    = $Filenames[$Choice]
+                $ArchivePath = Join-Path $TmpDir $Filename
+                if (-not (Get-RemoteFile $Urls[$Choice] $ArchivePath)) {
+                    throw "failed downloading tar.gz archive"
+                }
+                Write-Debug "downloaded: $ArchivePath"
 
-        if ($executable_files.Count -eq 0) {
-            [Console]::Error.WriteLine("no executable files found in archive")
-            exit 100
-        } else {
-            $choices = Get-UserChoice -Choices $executable_files -AllowQuit
-
-            if ($choices -ne "q") {
-                $selected_file = $executable_files[$choices]
-                $default_bin_dir = Join-Path $RUN_DIRECTORY "bin"
-                if (-not (Test-Path $default_bin_dir)) {
-                    New-Item -ItemType Directory -Path $default_bin_dir -Force | Out-Null
+                if (Get-Command tar -ErrorAction SilentlyContinue) {
+                    tar -xzf $ArchivePath
+                } elseif (Get-Command 7z -ErrorAction SilentlyContinue) {
+                    7z x $ArchivePath
+                    $TarFile = $ArchivePath -replace '\.gz$', ''
+                    if (Test-Path $TarFile) { 7z x $TarFile; Remove-Item $TarFile -Force }
+                } else {
+                    throw "No extraction tool found. Please install tar or 7-Zip."
                 }
 
-                # Use canonical binary name when set; otherwise keep the extracted file name.
-                $extracted_name = Split-Path $selected_file -Leaf
-                $dest_name = if (-not [string]::IsNullOrWhiteSpace($_CANONICAL_BINARY_NAME)) { $_CANONICAL_BINARY_NAME } else { $extracted_name }
-                $dest_path = Join-Path $default_bin_dir $dest_name
-                Confirm-Overwrite $dest_path
-                Copy-Item $selected_file $dest_path -Force
-                Write-Host "Installed $dest_name to $dest_path"
+                if (-not (Install-ArchiveContents -InstallPrefix $InstallPrefix -IsInteractive $IsInteractive)) { return }
+            }
+            "zip" {
+                $Filename    = $Filenames[$Choice]
+                $ArchivePath = Join-Path $TmpDir $Filename
+                if (-not (Get-RemoteFile $Urls[$Choice] $ArchivePath)) {
+                    throw "failed downloading zip archive"
+                }
+                Write-Debug "downloaded: $ArchivePath"
+                Expand-Archive -Path $ArchivePath -DestinationPath $TmpDir -Force
+                if (-not (Install-ArchiveContents -InstallPrefix $InstallPrefix -IsInteractive $IsInteractive)) { return }
+            }
+            default {
+                throw "invalid filetype: $FileType"
             }
         }
-    }
-    default {
-        [Console]::Error.WriteLine("invalid filetype: $_type")
-        exit 100
+    } finally {
+        Pop-Location
+        if (Test-Path $TmpDir) {
+            Write-Host "Removing $TmpDir"
+            Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
+
+Invoke-PipeInstall
 {% else %}
 #------------------------------------------------------------------------------
-# 11) No Assets Available
+# No Assets Available
 #------------------------------------------------------------------------------
-[Console]::Error.WriteLine("no assets found")
-exit 100
+throw "no assets found"
 {% endif %}
-
-# cleanup execution for non-engine-exit completion paths
-& $cleanup

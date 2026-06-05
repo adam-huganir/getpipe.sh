@@ -64,32 +64,25 @@ impl From<&str> for TargetOs {
 
 impl TargetOs {
   pub(crate) fn identify(input: &str) -> TargetOs {
-    let normed_input = input.to_lowercase();
-    let win = ["win", "windows"];
-    let linux = ["linux"];
-    // "darwin" contains the substring "win"; mac MUST be checked before windows.
-    let mac = ["mac", "macos", "osx", "darwin"];
-    let freebsd = ["freebsd"];
-    let openbsd = ["openbsd"];
-    let netbsd = ["netbsd"];
-
-    if freebsd.iter().any(|x| normed_input.contains(x)) {
+    let n = input.to_lowercase();
+    let check = |pats: &[&str]| pats.iter().any(|x| n.contains(x));
+    if check(&["freebsd"]) {
       return TargetOs::Freebsd;
     }
-    if openbsd.iter().any(|x| normed_input.contains(x)) {
+    if check(&["openbsd"]) {
       return TargetOs::Openbsd;
     }
-    if netbsd.iter().any(|x| normed_input.contains(x)) {
+    if check(&["netbsd"]) {
       return TargetOs::Netbsd;
     }
-    // Check mac before windows — "darwin" contains "win" as a substring.
-    if mac.iter().any(|x| normed_input.contains(x)) {
+    // mac before windows — "darwin" contains "win"
+    if check(&["mac", "macos", "osx", "darwin"]) {
       return TargetOs::Mac;
     }
-    if win.iter().any(|x| normed_input.contains(x)) {
+    if check(&["win", "windows"]) {
       return TargetOs::Windows;
     }
-    if linux.iter().any(|x| normed_input.contains(x)) {
+    if check(&["linux"]) {
       return TargetOs::Linux;
     }
     TargetOs::Unknown
@@ -161,66 +154,51 @@ impl Display for TargetArch {
 
 impl TargetArch {
   pub(crate) fn identify(input: &str) -> TargetArch {
-    let input = input.to_lowercase();
-    let amd = ["amd64", "x64", "x86_64"];
-    // "386" is in x86 but is a substring of e.g. "i386"; checked after all mips variants.
-    let x86 = ["x86", "i386", "i686", "x86_32", "386", "686", "ia32"];
-    // "arm64"/"aarch64" checked before "arm" — "arm" is a substring of "arm64".
-    let arm64 = ["arm64", "aarch64"];
-    let arm32 = ["arm"];
-    let ppcle = ["ppc64le", "ppc64el", "ppcle"];
-    // "ppc" checked after "ppc64le"/"ppc64el" — "ppc" is a substring of "ppc64".
-    let ppc = ["ppc", "ppc64", "powerpc"];
-    // mips variants checked most-specific first: mips64le → mips64 → mipsle → mips.
-    let mips64le = ["mips64le"];
-    let mips64 = ["mips64"];
-    let mipsle = ["mipsle", "mipsel"];
-    let mips = ["mips"];
-    let riscv = ["riscv"];
-
-    if amd.iter().any(|x| input.contains(x)) {
+    let n = input.to_lowercase();
+    let check = |pats: &[&str]| pats.iter().any(|x| n.contains(x));
+    if check(&["amd64", "x64", "x86_64"]) {
       return TargetArch::Amd64;
     }
-    if arm64.iter().any(|x| input.contains(x)) {
+    // arm64/aarch64 before arm — "arm" is a substring of "arm64"
+    if check(&["arm64", "aarch64"]) {
       return TargetArch::Arm64;
     }
-    if ppcle.iter().any(|x| input.contains(x)) {
+    // ppc64le/ppc64el before ppc — "ppc" is a substring of "ppc64"
+    if check(&["ppc64le", "ppc64el", "ppcle"]) {
       return TargetArch::PPCLe;
     }
-    if ppc.iter().any(|x| input.contains(x)) {
+    if check(&["ppc", "ppc64", "powerpc"]) {
       return TargetArch::PPC;
     }
-    if mips64le.iter().any(|x| input.contains(x)) {
+    // mips most-specific first: mips64le → mips64 → mipsle → mips
+    if check(&["mips64le"]) {
       return TargetArch::Mips64Le;
     }
-    if mips64.iter().any(|x| input.contains(x)) {
+    if check(&["mips64"]) {
       return TargetArch::Mips64;
     }
-    if mipsle.iter().any(|x| input.contains(x)) {
+    if check(&["mipsle", "mipsel"]) {
       return TargetArch::MipsLe;
     }
-    if mips.iter().any(|x| input.contains(x)) {
+    if check(&["mips"]) {
       return TargetArch::Mips;
     }
-    if x86.iter().any(|x| input.contains(x)) {
+    // "386" is a substring of "i386"; check x86 after all mips variants
+    if check(&["x86", "i386", "i686", "x86_32", "386", "686", "ia32"]) {
       return TargetArch::x86;
     }
-    if arm32.iter().any(|x| input.contains(x)) {
+    if check(&["arm"]) {
       return TargetArch::Arm32;
     }
-    if riscv.iter().any(|x| input.contains(x)) {
+    if check(&["riscv"]) {
       return TargetArch::RiscV;
     }
-
-    let amd64_os = ["windows64", "win64", "winx64", "linux64"];
-    let x86_os = ["windows32", "win32", "winx86", "linux32"];
-    if amd64_os.iter().any(|x| input.contains(x)) {
+    if check(&["windows64", "win64", "winx64", "linux64"]) {
       return TargetArch::Amd64;
     }
-    if x86_os.iter().any(|x| input.contains(x)) {
+    if check(&["windows32", "win32", "winx86", "linux32"]) {
       return TargetArch::x86;
     }
-
     TargetArch::Unknown
   }
 }

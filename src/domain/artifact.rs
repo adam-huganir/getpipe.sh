@@ -23,6 +23,7 @@ pub(crate) enum ArchiveType {
   _7z,
   Rar,
   Gzip,
+  Zip,
 }
 
 impl Display for ArchiveType {
@@ -35,45 +36,38 @@ impl Display for ArchiveType {
       ArchiveType::_7z => write!(f, "7z"),
       ArchiveType::Rar => write!(f, "rar"),
       ArchiveType::Gzip => write!(f, "gz"),
+      ArchiveType::Zip => write!(f, "zip"),
     }
   }
 }
 
 impl ArchiveType {
   fn identify(input: &str) -> Option<ArchiveType> {
-    // All checks use ends_with, not contains. Order still matters: more-specific
-    // extensions must come before less-specific ones that are suffixes of them
-    // (e.g. "tar.gz" before "gz", "tar.gz" before "tar").
-    let tar_gz = ["tar.gz", "tgz"];
-    let tar_bz2 = ["tar.bz2"];
-    let tar_xz = ["tar.xz"];
-    let tar = ["tar"];
-    let gz = ["gz"];
-    let z7z = ["7z"];
-    let rar = ["rar"];
-
-    if tar_gz.iter().any(|x| input.ends_with(x)) {
+    // More-specific extensions before less-specific suffixes of them.
+    if input.ends_with("tar.gz") || input.ends_with("tgz") {
       return Some(ArchiveType::TarGz);
     }
-    if tar_bz2.iter().any(|x| input.ends_with(x)) {
+    if input.ends_with("tar.bz2") {
       return Some(ArchiveType::TarBz2);
     }
-    if tar_xz.iter().any(|x| input.ends_with(x)) {
+    if input.ends_with("tar.xz") {
       return Some(ArchiveType::TarXz);
     }
-    // Bare ".tar" after all "tar.*" variants.
-    if tar.iter().any(|x| input.ends_with(x)) {
+    if input.ends_with("tar") {
       return Some(ArchiveType::Tar);
     }
-    // Bare ".gz" after "tar.gz" — a ".tar.gz" also ends_with ".gz".
-    if gz.iter().any(|x| input.ends_with(x)) {
+    // bare ".gz" after "tar.gz" — ".tar.gz" also ends_with ".gz"
+    if input.ends_with("gz") {
       return Some(ArchiveType::Gzip);
     }
-    if z7z.iter().any(|x| input.ends_with(x)) {
+    if input.ends_with("7z") {
       return Some(ArchiveType::_7z);
     }
-    if rar.iter().any(|x| input.ends_with(x)) {
+    if input.ends_with("rar") {
       return Some(ArchiveType::Rar);
+    }
+    if input.ends_with("zip") {
+      return Some(ArchiveType::Zip);
     }
     None
   }
@@ -96,7 +90,6 @@ impl InstallerType {
     }
     match extensions.last().unwrap().as_str() {
       "msi" => Some(InstallerType::Msi),
-      "exe" => Some(InstallerType::Exe),
       "deb" => Some(InstallerType::Deb),
       "rpm" => Some(InstallerType::Rpm),
       "pkg" => Some(InstallerType::Pkg),
@@ -124,24 +117,6 @@ pub(crate) enum ScriptType {
   Ps1,
   Python,
   Lua,
-}
-
-impl ScriptType {
-  #[allow(dead_code)]
-  fn identify(input: &str) -> Option<ScriptType> {
-    let extensions = &get_extensions(input);
-    if extensions.is_empty() {
-      return None;
-    }
-    match extensions.last().unwrap().as_str() {
-      "bat" => Some(ScriptType::Bat),
-      "sh" => Some(ScriptType::Sh),
-      "ps1" => Some(ScriptType::Ps1),
-      "py" => Some(ScriptType::Python),
-      "lua" => Some(ScriptType::Lua),
-      _ => None,
-    }
-  }
 }
 
 impl Display for ScriptType {
@@ -187,6 +162,7 @@ impl Filetype {
       "application/x-xar" => Filetype::Installer(InstallerType::Pkg),
       "application/x-gtar" | "application/gzip" => Filetype::Archive(ArchiveType::TarGz),
       "application/x-ms-dos-executable" => Filetype::Binary,
+      "application/x-ms-installer" => Filetype::Installer(InstallerType::Exe),
       "application/x-sh" => Filetype::Script(ScriptType::Sh),
       _ => Filetype::Unknown,
     }

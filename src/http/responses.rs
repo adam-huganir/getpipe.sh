@@ -149,18 +149,15 @@ impl IntoResponse for ScriptResponse {
     } else {
       format!("application/x-{}", self.shell_name)
     };
-    let body = if self.html {
-      self.as_html_document()
-    } else {
-      self.body
-    };
+    let filename = self.filename.clone();
+    let body = self.render_body();
 
     Response::builder()
       .status(StatusCode::OK)
       .header("Content-Type", content_type)
       .header(
         "Content-Disposition",
-        format!("inline; filename=\"{}\"", self.filename),
+        format!("inline; filename=\"{}\"", filename),
       )
       .body(body.into())
       .unwrap_or_else(|_| {

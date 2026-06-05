@@ -41,15 +41,15 @@ pub(crate) struct InstallQueryOptions {
   pub(crate) os: TargetOs,
   #[serde(default = "default_method")]
   method: InstallMethod,
-  #[serde(default = "default_download_only")]
+  #[serde(default)]
   download_only: bool,
-  #[serde(default = "default_force")]
+  #[serde(default)]
   force: bool,
-  #[serde(default = "default_quiet")]
+  #[serde(default)]
   quiet: bool,
   #[serde(default = "default_log_level")]
   pub(crate) log_level: String,
-  #[serde(default = "default_inline")]
+  #[serde(default)]
   pub(crate) inline: bool,
 }
 
@@ -76,24 +76,8 @@ fn default_method() -> InstallMethod {
   InstallMethod::Binary
 }
 
-fn default_download_only() -> bool {
-  false
-}
-
-fn default_force() -> bool {
-  false
-}
-
-fn default_quiet() -> bool {
-  false
-}
-
 fn default_log_level() -> String {
   "INFO".to_string()
-}
-
-fn default_inline() -> bool {
-  false
 }
 
 impl InstallQueryOptions {
@@ -118,11 +102,11 @@ impl InstallQueryOptions {
       arch: arch.unwrap_or_else(default_arch),
       os: os.unwrap_or_else(default_os),
       method: method.unwrap_or_else(default_method),
-      download_only: download_only.unwrap_or_else(default_download_only),
-      force: force.unwrap_or_else(default_force),
-      quiet: quiet.unwrap_or_else(default_quiet),
+      download_only: download_only.unwrap_or(false),
+      force: force.unwrap_or(false),
+      quiet: quiet.unwrap_or(false),
       log_level: log_level.unwrap_or_else(default_log_level),
-      inline: inline.unwrap_or_else(default_inline),
+      inline: inline.unwrap_or(false),
     }
   }
 
